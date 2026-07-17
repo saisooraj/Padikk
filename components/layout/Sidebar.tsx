@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useThemeStore } from "@/lib/store/theme";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 
 const NAV_GROUPS = [
   {
@@ -133,20 +134,7 @@ export function Sidebar({
           <span className="text-xs text-[var(--muted)]">
             {isDark ? "Dark mode" : "Light mode"}
           </span>
-          <button
-            onClick={toggleTheme}
-            aria-label="Toggle theme"
-            className="relative h-[21px] w-[38px] rounded-full border border-[var(--border)]"
-            style={{ background: isDark ? "var(--brand)" : "var(--surface2)" }}
-          >
-            <span
-              className="absolute top-0.5 h-[15px] w-[15px] rounded-full transition-all"
-              style={{
-                left: isDark ? "20px" : "3px",
-                background: isDark ? "var(--brand-text)" : "var(--muted)",
-              }}
-            />
-          </button>
+          <Switch checked={isDark} onCheckedChange={toggleTheme} aria-label="Toggle theme" />
         </div>
         <div className="px-1 font-mono text-[11px] text-[var(--muted)]">
           Month {activeMonth} of 12 · {momentumDays}d active
