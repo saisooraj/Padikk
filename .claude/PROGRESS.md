@@ -50,20 +50,49 @@ This changed:
 | 15 | `/interviews` log | ✅ Visual shell done, static data |
 | 16 | `/review` weekly form | ✅ Visual shell done, static data |
 | 17 | `/settings` | ✅ Visual shell done, static data |
-| 18 | Wire all API routes (`app/api/**`) | ⬜ Pending |
+| 18 | Wire all API routes (`app/api/**`) | 🟡 Dashboard + Today wired; 8 pages left |
 | 19 | Loading states, error boundaries, empty states | 🟡 Empty states done per-page; no loading.tsx/error.tsx yet |
 | 20 | Responsive mobile layout per page | 🟡 Shell + grids are responsive; not device-tested |
 | 21 | Dark mode polish, accessibility pass | 🟡 Both themes render correctly; no accessibility pass yet |
 
-**Dashboard is now wired (this session); the other 9 pages are still static/client-state shells**
-— auth gates them, but no Prisma queries or API routes are wired in for those yet. This was a
+**Dashboard and Today are now wired; the other 8 pages are still static/client-state shells** —
+auth gates them, but no Prisma queries or API routes are wired in for those yet. This was a
 deliberate scope choice for the design pivot: get the whole app visually right first, wire data in
 one page at a time afterward. See "Static shell data sources" below for exactly what's real vs.
 placeholder per remaining page.
 
-**Next up: continue step 18 with `/today` (near-identical shape to Dashboard — same week-tasks
-list, same log form, plus the Pomodoro timer, which stays client-only/no persistence), then work
-through the rest.**
+**Next up: continue step 18 with `/roadmap` (real curriculum data already mirrored in
+`lib/curriculum-data.ts`, so this one's mostly swapping the static import for a query module —
+no new derivation logic needed like Today's "current week" was), then `/dsa`, `/projects`,
+`/notes`, `/stats`, `/interviews`, `/review`, `/settings`.**
+
+## Today wiring (step 18, second page)
+
+Followed the Dashboard pattern exactly — no deviations:
+
+- `app/(app)/today/page.tsx` — Server Component, same `auth()` → redirect → fetch → pass `data`
+  prop shape as Dashboard.
+- `lib/queries/today.ts` — `getTodayData(userId)`, reuses `getOrCreateUserSettings` from
+  `lib/queries/dashboard.ts` and the exact same "first week with an incomplete task" derivation
+  (kept in sync manually — if that logic changes, update both places). Returns just
+  `{ monthNumber, currentWeek, weekTasks }`, since Today doesn't need `phase`/`project`/streak/
+  momentum/recent-activity — those stay Dashboard-only.
+- `app/(app)/today/TodayClient.tsx` — task checkboxes and the log form wired to the same two API
+  routes (`/api/tasks/[taskId]/toggle`, `/api/daily-log`) Dashboard already uses, no new routes
+  needed. The Pomodoro timer logic (`useEffect`/`useRef` interval) is untouched from the old static
+  shell — stays client-only, no persistence, per the original plan.
+- Page subtitle changed from the old shell's hardcoded `"Day 1 of Month {n}"` to
+  `"Week {currentWeek} · Month {monthNumber}"` — there's no per-month start date stored anywhere
+  to derive a real "Day N" count from, so don't reintroduce a fabricated day counter here.
+- **Verified end-to-end against the real DB**, same method as Dashboard: signed in via curl,
+  confirmed `/today` renders a real seeded task title/id and the correct `monthNumber`/
+  `currentWeek`, toggled a real task completion on and off (`TaskCompletion` row created then
+  deleted), saved a daily log and confirmed `DailyLog`/`Streak` update correctly including the
+  same-day-resave-doesn't-double-count case, then cleaned up all test data back to zero-state.
+- **Resolved this session**: the `.env`/`.env.local` `SEED_USER_PASSWORD` drift flagged below
+  turned out to be half-fixed already (both files now say `Sai@1235`) but the DB still had the
+  old hash — sign-in failed with `CredentialsSignin` until `npx prisma db seed` was re-run. Re-run
+  the seed anytime you change the password in the env files; it's an upsert, safe to repeat.
 
 ## Dashboard wiring (step 18, first page done this session)
 
@@ -116,12 +145,10 @@ Established the pattern the rest of step 18 should follow:
   count case; confirmed the momentum grid and recent-activity list reflect the saved log after a
   `router.refresh()`. All test data cleaned up afterward (`DailyLog` deleted, `Streak` counters
   reset to 0) so the DB is back to genuine zero-state, not left with test artifacts.
-- **Found, did not fix**: `.env`'s `SEED_USER_PASSWORD` (`padikk-dev-1234`) and `.env.local`'s
-  (`Sai@1235`) have drifted out of sync. Since the seed script only reads `.env` (its
-  `dotenv/config` doesn't load `.env.local`), the DB's hashed password matches `.env`'s value, not
-  `.env.local`'s — signing in with the password currently in `.env.local` will fail with
-  `CredentialsSignin`. Flagged to the user, not resolved — didn't want to guess which value is the
-  intended one and silently overwrite the other file.
+- **Found this session, resolved in the Today session** (see "Today wiring" above): `.env`'s
+  `SEED_USER_PASSWORD` had drifted from `.env.local`'s — since the seed script only reads `.env`
+  (its `dotenv/config` doesn't load `.env.local`), the DB's hashed password didn't match whichever
+  value was in `.env.local`.
 
 ## Auth (step 6, done this session)
 
