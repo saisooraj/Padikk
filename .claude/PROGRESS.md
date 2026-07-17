@@ -43,29 +43,83 @@ This changed:
 | 8 | `/dashboard` page | ✅ Wired to real Prisma queries (see below) |
 | 9 | `/today` page + Pomodoro timer | ✅ Visual shell done, static data |
 | 10 | `/roadmap` page | ✅ Visual shell done, static data |
-| 11 | `/dsa` page (list/filter/detail; no `/dsa/[id]` route yet) | ✅ Visual shell done, static data |
+| 11 | `/dsa` page (list/filter/detail; no `/dsa/[id]` route yet) | ✅ Wired to real Prisma queries (see below) |
 | 12 | `/projects` Kanban board | ✅ Visual shell done, static data |
 | 13 | `/notes` page (plain textarea view; no Tiptap yet) | ✅ Visual shell done, static data |
 | 14 | `/stats` analytics page | ✅ Visual shell done, static data |
 | 15 | `/interviews` log | ✅ Visual shell done, static data |
 | 16 | `/review` weekly form | ✅ Visual shell done, static data |
 | 17 | `/settings` | ✅ Visual shell done, static data |
-| 18 | Wire all API routes (`app/api/**`) | 🟡 Dashboard + Today + Roadmap wired; 7 pages left |
+| 18 | Wire all API routes (`app/api/**`) | 🟡 Dashboard + Today + Roadmap + DSA wired; 6 pages left |
 | 19 | Loading states, error boundaries, empty states | 🟡 Empty states done per-page; no loading.tsx/error.tsx yet |
 | 20 | Responsive mobile layout per page | 🟡 Shell + grids are responsive; not device-tested |
 | 21 | Dark mode polish, accessibility pass | 🟡 Both themes render correctly; no accessibility pass yet |
 
-**Dashboard, Today, and Roadmap are now wired; the other 7 pages are still static/client-state
+**Dashboard, Today, Roadmap, and DSA are now wired; the other 6 pages are still static/client-state
 shells** — auth gates them, but no Prisma queries or API routes are wired in for those yet. This
 was a deliberate scope choice for the design pivot: get the whole app visually right first, wire
 data in one page at a time afterward. See "Static shell data sources" below for exactly what's
 real vs. placeholder per remaining page.
 
-**Next up: continue step 18 with `/dsa` — first page with no existing Dashboard/Today-style
-pattern to lean on (list/filter/detail over a user-created `DSAProblem` table with no seed data,
-so a genuinely empty DB is the real initial state, not a placeholder catalog to swap out). Then
-`/projects` (real seeded curriculum, similar shape to Roadmap), `/notes`, `/stats`, `/interviews`,
-`/review`, `/settings`.**
+**Next up: continue step 18 with `/projects`** (real seeded curriculum, similar shape to Roadmap —
+`MonthProject` has no stored status field either, so it needs the same `UserSettings.currentMonth`-
+derived status Roadmap already established). Then `/notes`, `/stats`, `/interviews`, `/review`,
+`/settings`. Building one page per session/turn now, going in that order — see "Session-closing
+checklist" below, keep doing this rather than batching multiple pages into one pass.
+
+## DSA wiring (step 18, fourth page)
+
+First page with genuinely empty seed data — `DSAProblem` is user-created, so this was also the
+first page needing real **write** capability (create/update/delete), not just read-mostly queries
+like Dashboard/Today/Roadmap. Kept the existing shell's list/filter/inline-detail UI (no separate
+`/dsa/[id]` route — that was never built even in the static-shell pass, so wiring didn't add it
+either) but backed it with real mutations:
+
+- `lib/queries/dsa.ts` — `getDsaData(userId)`: all of this user's `DSAProblem` rows, plus
+  server-computed `stats` (owned/solved/needsReview/total), `patternMastery` (per-pattern
+  solved/total, only patterns with ≥1 problem), and `dueForReview` (reviewAt ≤ today AND status is
+  NEEDS_REVIEW or SOLVED) — same shape the static shell derived client-side from `DSA_PROBLEMS`,
+  now derived server-side from the DB. `reviewInDays` (days from today, negative = overdue) is
+  computed here via `differenceInCalendarDays` rather than stored.
+- **New API routes**, both under `auth()` guard:
+  - `POST /api/dsa` — creates a problem (`title`/`difficulty`/`pattern` required, validated against
+    `DSA_PATTERNS` and the difficulty enum before hitting Prisma; `leetcodeUrl`/`notes`/
+    `monthTarget` optional). Returns `{ problem }`.
+  - `PATCH /api/dsa/[id]` — action-based, not a flat field patch: `{ action: "setStatus", status }`,
+    `{ action: "reviewDone" }`, `{ action: "markOwned" }`, `{ action: "markNeedsReview" }`, or
+    `{ action: "updateFields", notes?/leetcodeUrl?/tags?/monthTarget?/timeSpent? }`. Every branch
+    re-fetches the problem scoped to `{ id, userId }` first and 404s if it doesn't belong to the
+    signed-in user, before applying any mutation.
+  - `DELETE /api/dsa/[id]` — same ownership check, then deletes.
+- **Spaced-repetition logic, simplified from the original spec** (the spec's wording was internally
+  inconsistent — "Mark as Owned" sets `reviewAt` to +7d in one section, but the review-ladder
+  section says the 3rd review clears `reviewAt` to null *because* the problem is now fully owned,
+  which is a contradiction if both fire on the same status). Resolved as: `setStatus → SOLVED` on a
+  problem that's never been solved sets `solvedAt = now` and schedules the first review at +3 days.
+  From there, each `reviewDone` click (used for both the inline detail panel and the "Due for
+  review" sidebar) advances a ladder tracked via `attempts` (the spec explicitly says to track
+  review count through this field, despite `attempts` semantically doubling as "solve attempts"
+  elsewhere — an existing ambiguity in the spec, not introduced here): 1st → `reviewAt` = +7d, 2nd →
+  +14d, 3rd → `reviewAt = null` and `status = OWNED` (fully owned, no more scheduled reviews). The
+  manual "Mark as Owned" / "Needs review" status buttons are independent overrides — Owned always
+  clears `reviewAt`, Needs-review sets `reviewAt = now` if it wasn't already scheduled, so it shows
+  up as due immediately.
+- `app/(app)/dsa/DsaClient.tsx` — same filter/search/table/pattern-mastery/due-for-review layout as
+  the old static shell, plus: an inline "+ Add problem" form (title/pattern/difficulty required),
+  a status-button row and "Done reviewing" action in the detail panel, an editable/saveable notes
+  textarea, and a delete button. Empty state text changes depending on whether filters are hiding
+  everything vs. the table being genuinely empty (0 problems ever added).
+- No `/dsa/[id]` route was added — out of scope for this pass, matching what the static shell
+  already had (inline detail panel only). If a future session wants deep-linkable problem pages,
+  that's a new addition to the original 21-step plan, not something this wiring silently dropped.
+- **Verified end-to-end against the real DB**: confirmed `DSAProblem` was genuinely empty (0 rows)
+  before starting; created a problem via `POST /api/dsa` and confirmed a bad `pattern` value 400s;
+  drove it through `setStatus → SOLVED` (confirmed `solvedAt` set, `reviewAt` = +3d) and three
+  `reviewDone` calls in sequence (confirmed the ladder: +7d/attempts=1 → +14d/attempts=2 →
+  `reviewAt=null`/`status=OWNED`/attempts=3); confirmed `updateFields` notes persisted; confirmed an
+  unauthenticated `PATCH` 401s; confirmed `/dsa` renders the real title server-side both while the
+  problem existed and the correct empty-state copy after; deleted the problem via `DELETE` and
+  confirmed the table returned to 0 rows.
 
 ## Roadmap wiring (step 18, third page)
 
@@ -229,17 +283,21 @@ provider was dropped entirely (not stubbed) — no `GOOGLE_CLIENT_ID`/`SECRET` a
 Two different philosophies were used, both deliberate — don't try to make them consistent with
 each other, they're answering different questions:
 
-- **Dashboard, Today & Roadmap** are wired to real Prisma queries now (see the wiring sections
-  above) and show *honest empty/zero states* (0 days active, "no activity yet", months
-  `NOT_STARTED` at 0% etc.) rather than fabricated history — these pages are about *this user's*
-  real progress, and a fresh account genuinely has none yet.
-- **DSA Tracker, Notes, Interviews, Weekly Review, Stats** still show *illustrative sample
-  catalogs* (`lib/dsa-data.ts`, `lib/notes-data.ts`, `lib/interviews-data.ts`,
-  `lib/weekly-review-data.ts`, `lib/stats-data.ts`) — these are catalog/list-management pages
-  whose entire visual purpose (table density, badge variety, chart shapes) is unreadable when
-  empty, and their underlying Prisma models are user-created with no seed data anyway. Stats'
-  numbers are derived from the same placeholder universe as DSA/Interviews so they stay internally
-  consistent with each other.
+- **Dashboard, Today, Roadmap & DSA** are wired to real Prisma queries now (see the wiring
+  sections above) and show *honest empty/zero states* (0 days active, "no activity yet", months
+  `NOT_STARTED` at 0%, "No problems tracked yet" etc.) rather than fabricated history — these pages
+  are about *this user's* real progress, and a fresh account genuinely has none yet.
+- **Notes, Interviews, Weekly Review, Stats** still show *illustrative sample catalogs*
+  (`lib/notes-data.ts`, `lib/interviews-data.ts`, `lib/weekly-review-data.ts`,
+  `lib/stats-data.ts`) — these are catalog/list-management pages whose entire visual purpose
+  (table density, badge variety, chart shapes) is unreadable when empty, and their underlying
+  Prisma models are user-created with no seed data anyway. Stats' numbers are derived from the
+  same placeholder universe as Interviews so they stay internally consistent with each other.
+  `lib/dsa-data.ts`'s `DSA_PATTERNS`/`PATTERN_LABEL` exports are still used post-wiring (real
+  enum/label source for the DSA page's selects and pattern-mastery list), and its illustrative
+  `DSA_PROBLEMS` array/`difficultyDistribution()` helper are *not* dead code — `/stats` still reads
+  them directly (see `app/(app)/stats/page.tsx`) since Stats isn't wired yet. Don't delete or
+  change `DSA_PROBLEMS`'s shape until Stats is wired too, or its build will break.
 - **Projects** still uses the static `lib/curriculum-data.ts` mirror — same real seeded curriculum
   Roadmap used to read before this session's wiring, so swapping it for `lib/queries/roadmap.ts`'s
   `Month`/`MonthProject` query shape (or a thin variant of it) should be a drop-in, not a rewrite.
