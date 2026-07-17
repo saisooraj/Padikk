@@ -15,3 +15,13 @@ export function parseDurationToMinutes(input: string): number {
   const plainNumber = parseFloat(text);
   return Number.isFinite(plainNumber) ? Math.max(0, Math.round(plainNumber)) : 0;
 }
+
+/** Formats whole minutes back into "1h 45m" / "1h" / "45m" / "0m". */
+export function formatMinutes(minutes: number): string {
+  if (minutes <= 0) return "0m";
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  if (hours && remainder) return `${hours}h ${remainder}m`;
+  if (hours) return `${hours}h`;
+  return `${remainder}m`;
+}

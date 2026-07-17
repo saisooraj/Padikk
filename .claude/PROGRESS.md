@@ -50,20 +50,68 @@ This changed:
 | 15 | `/interviews` log | ✅ Visual shell done, static data |
 | 16 | `/review` weekly form | ✅ Visual shell done, static data |
 | 17 | `/settings` | ✅ Visual shell done, static data |
-| 18 | Wire all API routes (`app/api/**`) | 🟡 Dashboard + Today + Roadmap + DSA + Projects + Notes wired; 4 pages left |
+| 18 | Wire all API routes (`app/api/**`) | 🟡 Dashboard + Today + Roadmap + DSA + Projects + Notes + Stats wired; 3 pages left |
 | 19 | Loading states, error boundaries, empty states | 🟡 Empty states done per-page; no loading.tsx/error.tsx yet |
 | 20 | Responsive mobile layout per page | 🟡 Shell + grids are responsive; not device-tested |
 | 21 | Dark mode polish, accessibility pass | 🟡 Both themes render correctly; no accessibility pass yet |
 
-**Dashboard, Today, Roadmap, DSA, Projects, and Notes are now wired; the other 4 pages are still
-static/client-state shells** — auth gates them, but no Prisma queries or API routes are wired in
-for those yet. This was a deliberate scope choice for the design pivot: get the whole app visually
-right first, wire data in one page at a time afterward. See "Static shell data sources" below for
-exactly what's real vs. placeholder per remaining page.
+**Dashboard, Today, Roadmap, DSA, Projects, Notes, and Stats are now wired; the other 3 pages are
+still static/client-state shells** — auth gates them, but no Prisma queries or API routes are
+wired in for those yet. This was a deliberate scope choice for the design pivot: get the whole app
+visually right first, wire data in one page at a time afterward. See "Static shell data sources"
+below for exactly what's real vs. placeholder per remaining page.
 
-**Next up: continue step 18 with `/stats`**, then `/interviews`, `/review`, `/settings`.
+**Next up: continue step 18 with `/interviews`**, then `/review`, `/settings`.
 Building one page per session/turn now, going in that order — see "Session-closing checklist"
 below, keep doing this rather than batching multiple pages into one pass.
+
+## Stats wiring (step 18, seventh page)
+
+Read-only analytics page — no new API routes needed (matches Roadmap's read-only pattern), but
+first page whose numbers are **derived/aggregated** from several other models rather than a
+near-direct passthrough of one:
+
+- `lib/queries/stats.ts` — `getStatsData(userId)`, four parallel queries (`TaskCompletion` joined
+  with `task.type`, `DailyLog`, `DSAProblem`, `MockInterview`) reduced into: `statTiles`
+  (totalHours/dsaSolved/dsaTotal/interviewCount/avgSessionMinutes), a 20-week×7-day `heatmap`
+  (0–4 intensity levels bucketed from each day's `DailyLog.totalTime`, defaulting to 0 for days
+  with no log), `hoursByType` (minutes summed per `TaskType` from `TaskCompletion.timeSpent`, not
+  from `DailyLog` — a "session" and a "completed task" are different units, kept distinct rather
+  than conflated), `difficultyDistribution` (solved = `SOLVED` or `OWNED`, same definition DSA's
+  `patternMastery` uses), and `interviewTrend` (all `MockInterview` rows ordered oldest→newest for
+  the bar chart, real `Date` objects passed straight through like other pages).
+- **"Total hours logged" and "Hours by task type" are now internally consistent by construction**
+  (total = sum of the per-type minutes, both computed from the same `TaskCompletion` query) —
+  unlike the old placeholder catalog where `HOURS_BY_TYPE` and `INTERVIEWS.length` etc. were
+  independent hardcoded numbers with no relationship to each other.
+- **"Avg. session length" is average `DailyLog.totalTime` across all logged days** (a "session" =
+  one day's logged time via the Daily Log form), not average `TaskCompletion.timeSpent` — different
+  concept from "hours by type," intentionally not reused.
+- Added `formatMinutes()` to `lib/parse-duration.ts` (companion to the existing
+  `parseDurationToMinutes`) — turns whole minutes back into `"1h 45m"`/`"1h"`/`"45m"`/`"0m"` for the
+  avg-session tile. Reusable for `/review`'s `totalMinutes` field when that page gets wired.
+- Heatmap bucketing thresholds (0 / <30 / <60 / <120 / ≥120 minutes → levels 0–4) are a judgment
+  call, not derived from anywhere in the spec — revisit if they read wrong once there's real
+  multi-week data to look at.
+- `app/(app)/stats/page.tsx` — Server Component, same `auth()` → redirect → fetch → pass `data`
+  prop shape as every other wired page; `app/(app)/stats/StatsClient.tsx` is the new client
+  component (old logic lived directly in `page.tsx` as a `"use client"` page, which the
+  Server/Client split doesn't allow anymore).
+- `HEATMAP_LEVEL_OPACITY` is still imported from `lib/stats-data.ts` (a real presentation constant,
+  not fabricated data — same "still used post-wiring" treatment as `DSA_PATTERNS`/`PATTERN_LABEL`
+  in `lib/dsa-data.ts`). `buildHeatmapWeeks`/`hoursByTypeRows`/`HOURS_BY_TYPE` in that file and
+  `DSA_PROBLEMS`/`difficultyDistribution()` in `lib/dsa-data.ts` are now fully dead code (Stats was
+  their last caller) — left in place rather than deleted, same reasoning as `notes-data.ts`'s
+  `NOTES`: cheap to leave, `lib/interviews-data.ts`'s `INTERVIEWS` is still genuinely used by the
+  unwired `/interviews` page so that file wasn't touched.
+- **Verified end-to-end against the real DB**: confirmed the pre-existing real `TaskCompletion` row
+  (60 min, `LEARN`) was the only non-zero input and `/stats` rendered "1h" total, a 100%-width
+  Learn bar with all others at 0%, "0/0" DSA solved, "0" interviews, "0m" avg session, and the "No
+  mock interviews logged yet" empty state; inserted a real `DailyLog` row (90 min, today) directly
+  in Postgres and confirmed avg session length recalculated to "1h 30m" and today's heatmap cell
+  (last of 140) jumped from opacity 0.15 (level 0) to opacity 0.8 (level 3, since 60 ≤ 90 < 120);
+  deleted that test row and confirmed `/stats` returned to the exact original zero-state; confirmed
+  unauthenticated `/stats` still redirects (302) via middleware.
 
 ## Notes wiring (step 18, sixth page)
 
@@ -377,25 +425,23 @@ provider was dropped entirely (not stubbed) — no `GOOGLE_CLIENT_ID`/`SECRET` a
 Two different philosophies were used, both deliberate — don't try to make them consistent with
 each other, they're answering different questions:
 
-- **Dashboard, Today, Roadmap, DSA, Projects & Notes** are wired to real Prisma queries now (see
-  the wiring sections above) and show *honest empty/zero states* (0 days active, "no activity yet",
-  months `NOT_STARTED` at 0%, "No problems tracked yet", all 12 projects `NOT_STARTED`, "No notes
-  yet" etc.) rather than fabricated history — these pages are about *this user's* real progress, and
-  a fresh account genuinely has none yet. `lib/notes-data.ts`'s `NOTES` illustrative array is now
-  dead code post-wiring (nothing imports it) — left in place rather than deleted, since Interviews/
-  Weekly Review/Stats' placeholder files are still load-bearing and it's cheap to leave one unused
-  file rather than risk deleting something still referenced; safe to remove in a later cleanup pass.
-- **Interviews, Weekly Review, Stats** still show *illustrative sample catalogs*
-  (`lib/interviews-data.ts`, `lib/weekly-review-data.ts`, `lib/stats-data.ts`) — these are
-  catalog/list-management pages whose entire visual purpose (table density, badge variety, chart
-  shapes) is unreadable when empty, and their underlying Prisma models are user-created with no seed
-  data anyway. Stats' numbers are derived from the same placeholder universe as Interviews so they
-  stay internally consistent with each other.
-  `lib/dsa-data.ts`'s `DSA_PATTERNS`/`PATTERN_LABEL` exports are still used post-wiring (real
-  enum/label source for the DSA page's selects and pattern-mastery list), and its illustrative
-  `DSA_PROBLEMS` array/`difficultyDistribution()` helper are *not* dead code — `/stats` still reads
-  them directly (see `app/(app)/stats/page.tsx`) since Stats isn't wired yet. Don't delete or
-  change `DSA_PROBLEMS`'s shape until Stats is wired too, or its build will break.
+- **Dashboard, Today, Roadmap, DSA, Projects, Notes & Stats** are wired to real Prisma queries now
+  (see the wiring sections above) and show *honest empty/zero states* (0 days active, "no activity
+  yet", months `NOT_STARTED` at 0%, "No problems tracked yet", all 12 projects `NOT_STARTED`, "No
+  notes yet", "0h"/"0/0"/"No mock interviews logged yet" on Stats, etc.) rather than fabricated
+  history — these pages are about *this user's* real progress, and a fresh account genuinely has
+  none yet. `lib/notes-data.ts`'s `NOTES` array, `lib/dsa-data.ts`'s `DSA_PROBLEMS`/
+  `difficultyDistribution()`, and `lib/stats-data.ts`'s `buildHeatmapWeeks`/`hoursByTypeRows`/
+  `HOURS_BY_TYPE` are now dead code post-wiring (nothing imports them) — left in place rather than
+  deleted, since Interviews/Weekly Review's placeholder files are still load-bearing and it's cheap
+  to leave a few unused exports rather than risk deleting something still referenced; safe to
+  remove in a later cleanup pass. `lib/dsa-data.ts`'s `DSA_PATTERNS`/`PATTERN_LABEL` and
+  `lib/stats-data.ts`'s `HEATMAP_LEVEL_OPACITY` **are** still used post-wiring — real enum/label/
+  presentation constants, not fabricated data, same distinction as before.
+- **Interviews, Weekly Review** still show *illustrative sample catalogs* (`lib/interviews-data.ts`,
+  `lib/weekly-review-data.ts`) — these are catalog/list-management pages whose entire visual purpose
+  (table density, badge variety) is unreadable when empty, and their underlying Prisma models are
+  user-created with no seed data anyway.
 - All placeholder-data files use the real Prisma enum values/casing (e.g. `"NEEDS_REVIEW"`, not
   the mockup's `"needs review"`) for the same reason.
 
