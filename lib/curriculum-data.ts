@@ -599,3 +599,13 @@ export function getMonth(monthNumber: number): CurriculumMonth {
 export function tasksForWeek(monthNumber: number, weekNumber: number): CurriculumTask[] {
   return getMonth(monthNumber).tasks.filter((t) => t.weekNumber === weekNumber);
 }
+
+/** CSS var() references for a phase chip's text/background — for inline `style`. */
+export function phaseColorVars(color: PhaseColorKey): { color: string; soft: string } {
+  return { color: `var(--${color})`, soft: `var(--${color}-soft)` };
+}
+
+/** CSS var() references for a task-type badge's text/background — for inline `style`. */
+export function taskTypeColorVars(type: TaskType): { color: string; soft: string } {
+  return phaseColorVars(TASK_TYPE_COLOR[type]);
+}
