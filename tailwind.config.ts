@@ -11,7 +11,6 @@ const config: Config = {
     extend: {
       fontFamily: {
         sans: ["var(--font-inter)", "sans-serif"],
-        space: ["var(--font-space-grotesk)", "sans-serif"],
         mono: ["var(--font-jetbrains-mono)", "monospace"],
       },
       colors: {
@@ -49,7 +48,7 @@ const config: Config = {
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
 
-        // Padikk phase colors
+        // Padikk phase colors (each has a matching `-soft` CSS var for chips)
         backend: "var(--backend)",
         ai: "var(--ai)",
         cloud: "var(--cloud)",
@@ -57,11 +56,10 @@ const config: Config = {
         sysdesign: "var(--sysdesign)",
         interview: "var(--interview)",
 
-        // Padikk status colors
-        success: "var(--success)",
-        warning: "var(--warning)",
+        // Padikk brand + status colors
+        brand: "var(--brand)",
         danger: "var(--danger)",
-        info: "var(--info)",
+        warn: "var(--warn)",
       },
       borderRadius: {
         lg: "var(--radius)",

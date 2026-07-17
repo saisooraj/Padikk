@@ -2,28 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  /* Padikk surface palette */
-  --bg: #0b0f1a;
-  --surface: #131828;
-  --surface2: #1a2035;
-  --border: #1d2540;
-  --text: #e2e8f8;
-  --muted: #6b7899;
+/*
+  Padikk design tokens. OKLCH-based, themed via [data-theme] on <html>.
+  Phase colors share one formula across both themes (see PROGRESS.md):
+  dark = oklch(72% 0.13 <hue>), light = oklch(48% 0.14 <hue>); soft variants
+  are the same with reduced alpha for chip backgrounds.
+  Hues: backend 25, ai 155, cloud 205, dsa 90, sysdesign 275, interview 330.
+  --brand reuses hue 155 (same as --ai) as the interactive/brand color.
+*/
 
-  /* Phase colors */
-  --backend: #3b82f6;
-  --ai: #e879f9;
-  --cloud: #8b5cf6;
-  --dsa: #f59e0b;
-  --sysdesign: #06b6d4;
-  --interview: #10b981;
+:root,
+:root[data-theme="dark"] {
+  --bg: oklch(15% 0.006 155);
+  --surface: oklch(19% 0.007 155);
+  --surface2: oklch(23.5% 0.008 155);
+  --border: oklch(28% 0.009 155);
+  --border-strong: oklch(34% 0.01 155);
+  --text: oklch(94% 0.004 155);
+  --muted: oklch(64% 0.01 155);
 
-  /* Status colors */
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --info: #3b82f6;
+  --brand: oklch(74% 0.135 155);
+  --brand-soft: oklch(74% 0.135 155 / 0.15);
+  --brand-text: oklch(16% 0.02 155);
+
+  --danger: oklch(66% 0.16 25);
+  --warn: oklch(76% 0.13 80);
+
+  --backend: oklch(72% 0.13 25);
+  --backend-soft: oklch(72% 0.13 25 / 0.16);
+  --ai: oklch(72% 0.13 155);
+  --ai-soft: oklch(72% 0.13 155 / 0.16);
+  --cloud: oklch(72% 0.13 205);
+  --cloud-soft: oklch(72% 0.13 205 / 0.16);
+  --dsa: oklch(72% 0.13 90);
+  --dsa-soft: oklch(72% 0.13 90 / 0.16);
+  --sysdesign: oklch(72% 0.13 275);
+  --sysdesign-soft: oklch(72% 0.13 275 / 0.16);
+  --interview: oklch(72% 0.13 330);
+  --interview-soft: oklch(72% 0.13 330 / 0.16);
 
   /* shadcn/ui tokens mapped to the Padikk dark palette (HSL triplets) */
   --background: 226 39% 8%;
@@ -46,6 +62,56 @@
   --input: 228 35% 17%;
   --ring: 292 91% 73%;
   --radius: 0.75rem;
+}
+
+:root[data-theme="light"] {
+  --bg: oklch(98% 0.004 155);
+  --surface: oklch(99.5% 0.002 155);
+  --surface2: oklch(95.5% 0.006 155);
+  --border: oklch(89% 0.007 155);
+  --border-strong: oklch(80% 0.01 155);
+  --text: oklch(21% 0.006 155);
+  --muted: oklch(46% 0.012 155);
+
+  --brand: oklch(50% 0.135 155);
+  --brand-soft: oklch(50% 0.135 155 / 0.1);
+  --brand-text: oklch(99% 0.01 155);
+
+  --danger: oklch(52% 0.17 25);
+  --warn: oklch(55% 0.14 80);
+
+  --backend: oklch(48% 0.14 25);
+  --backend-soft: oklch(48% 0.14 25 / 0.1);
+  --ai: oklch(48% 0.14 155);
+  --ai-soft: oklch(48% 0.14 155 / 0.1);
+  --cloud: oklch(48% 0.14 205);
+  --cloud-soft: oklch(48% 0.14 205 / 0.1);
+  --dsa: oklch(48% 0.14 90);
+  --dsa-soft: oklch(48% 0.14 90 / 0.1);
+  --sysdesign: oklch(48% 0.14 275);
+  --sysdesign-soft: oklch(48% 0.14 275 / 0.1);
+  --interview: oklch(48% 0.14 330);
+  --interview-soft: oklch(48% 0.14 330 / 0.1);
+
+  --background: 60 33% 97%;
+  --foreground: 155 6% 21%;
+  --card: 155 2% 99%;
+  --card-foreground: 155 6% 21%;
+  --popover: 155 2% 99%;
+  --popover-foreground: 155 6% 21%;
+  --primary: 155 50% 40%;
+  --primary-foreground: 155 2% 99%;
+  --secondary: 155 6% 95%;
+  --secondary-foreground: 155 6% 21%;
+  --muted-hsl: 155 6% 95%;
+  --muted-foreground: 155 6% 46%;
+  --accent: 155 6% 95%;
+  --accent-foreground: 155 6% 21%;
+  --destructive: 25 84% 52%;
+  --destructive-foreground: 155 2% 99%;
+  --border-hsl: 155 7% 89%;
+  --input: 155 7% 89%;
+  --ring: 155 50% 40%;
 }
 
 * {
