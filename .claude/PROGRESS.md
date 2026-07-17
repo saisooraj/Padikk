@@ -69,8 +69,15 @@ step 8/9.**
   `Sai Sooraj <saisoorajpnair@gmail.com>`. Global git config is untouched.
 - Commits are made **one per phase** (not one big commit) — keep doing this going forward, e.g.
   one commit per numbered step above once it's meaningfully done, not a mega-commit at the end.
-- **No remote configured yet** — was waiting on the user to paste a repo URL when this file was
-  written. Check `git remote -v` before assuming push access exists.
+- **Remote is configured**: `origin` → `https://github.com/saisooraj/Padikk.git`, `main` branch,
+  pushed via a fine-grained PAT (not stored in git config). Auth uses the user's own token when
+  they push manually; if a future session needs to push, ask the user to run it or supply a token
+  rather than assuming cached credentials work — a stale/wrong-scoped token in the macOS keychain
+  caused a 403 earlier in this project.
+- **Never add a `Co-Authored-By: Claude` trailer to commits in this project** (or any project —
+  saved as a global feedback memory). User explicitly opted out; existing history was rewritten
+  with `git filter-branch --msg-filter` + `git push --force-with-lease` to remove it. Plain commit
+  messages only, going forward.
 
 ## Where things live
 
