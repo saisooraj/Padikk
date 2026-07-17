@@ -38,7 +38,7 @@ This changed:
 | 3 | `globals.css` — CSS vars, fonts | ✅ Done (rewritten for the design pivot, see above) |
 | 4 | Prisma schema + initial migration | ✅ Done |
 | 5 | Seed script (curriculum data) | ✅ Done |
-| 6 | NextAuth config (`auth.ts`, API route) | ⬜ Pending |
+| 6 | NextAuth config (`auth.ts`, API route) | ✅ Done (Credentials-only, see below — not Google) |
 | 7 | Root layout + Sidebar + PageShell | ✅ Done (rebuilt for the design pivot) |
 | 8 | `/dashboard` page | ✅ Visual shell done, static data |
 | 9 | `/today` page + Pomodoro timer | ✅ Visual shell done, static data |
@@ -55,13 +55,59 @@ This changed:
 | 20 | Responsive mobile layout per page | 🟡 Shell + grids are responsive; not device-tested |
 | 21 | Dark mode polish, accessibility pass | 🟡 Both themes render correctly; no accessibility pass yet |
 
-**Every page above is a static/client-state shell** — no NextAuth (step 6), no Prisma queries, no
-API routes (step 18) wired in yet. This was a deliberate scope choice for the design pivot: get
-the whole app visually right first, wire data in afterward. See "Static shell data sources" below
-for exactly what's real vs. placeholder per page.
+**Every page above is still a static/client-state shell** — auth now gates them, but no Prisma
+queries or API routes (step 18) are wired in yet. This was a deliberate scope choice for the
+design pivot: get the whole app visually right first, wire data in afterward. See "Static shell
+data sources" below for exactly what's real vs. placeholder per page.
 
-**Next up: step 6 (NextAuth) then step 18 (wire real Prisma queries into every page below),
-replacing the static data sources one page at a time.**
+**Next up: step 18 (wire real Prisma queries into every page below, using `auth()` /
+`useSession()` to scope queries to the signed-in user), replacing the static data sources one page
+at a time.**
+
+## Auth (step 6, done this session)
+
+Original spec said "Google + Credentials." Asked the user; they picked **Credentials-only** —
+single-user app, Google OAuth would need Google Cloud Console setup with no benefit here. Google
+provider was dropped entirely (not stubbed) — no `GOOGLE_CLIENT_ID`/`SECRET` anywhere anymore.
+
+- **Schema**: added `User.hashedPassword String?` (migration
+  `20260717112402_add_user_hashed_password`). Re-run `npx prisma generate` after pulling this if
+  your local client is stale (the seed script will throw "Unknown argument `hashedPassword`"
+  otherwise).
+- **Config split across two files** — required for Prisma/bcrypt to stay out of the Edge runtime:
+  - `auth.config.ts` — edge-safe (pages, jwt/session callbacks, empty `providers: []`). Imported by
+    `middleware.ts`, which builds its own lightweight `NextAuth(authConfig)` instance just to read
+    `req.auth` and redirect. Do **not** add the Credentials provider or `PrismaAdapter` here —
+    bcryptjs and `@prisma/adapter-pg` both use Node APIs (`crypto`, `setImmediate`) that break the
+    Edge bundle; `npm run build` will fail loudly with Edge Runtime warnings if you do.
+  - `auth.ts` — full config (spreads `authConfig`, adds `PrismaAdapter` + the `Credentials`
+    provider with bcrypt `compare`). Used by `app/api/auth/[...nextauth]/route.ts` (Node runtime)
+    and everywhere server code needs `auth()`.
+- `middleware.ts` protects all 10 `(app)` routes (matcher list, not a blanket matcher — `/signin`
+  and `/api/auth/*` must stay reachable). Redirects to `/signin?callbackUrl=<path>`.
+- `app/(auth)/signin/` — `page.tsx` is a server component that wraps `SignInForm.tsx` (client) in
+  `<Suspense>`, required because the form reads `callbackUrl` via `useSearchParams()` and Next.js
+  14 fails the build without a Suspense boundary around that hook.
+- `app/providers.tsx` now also wraps children in `next-auth/react`'s `SessionProvider` (needed for
+  `useSession()`/`signOut()` client-side, used in Settings).
+- **Single user is seed-managed**, not created by the signup flow (there is no signup flow —
+  single-user app). `prisma/seed.ts` now has a `seedUser()` step that upserts one `User` row with
+  a bcrypt-hashed password, reading `SEED_USER_EMAIL` / `SEED_USER_PASSWORD` / `SEED_USER_NAME`
+  from env (`.env`, since the seed script's `dotenv/config` only reads `.env`, not `.env.local` —
+  both files need these three vars kept in sync if you change the password). To reset/change the
+  password: edit the env var(s) and re-run `npx prisma db seed` (it's an upsert, safe to re-run).
+- Settings page got a small "Account" card at the top (email/name + Sign out button) — the
+  identity element `PROGRESS.md` said Sidebar might need back; it landed in Settings instead, per
+  the original spec's intent ("account info surfaces via the Settings page").
+- Fixed two pre-existing lint errors while getting `npm run build` green (unrelated to auth, were
+  already broken on `main` before this session): `next.has(title) ? next.delete(title) :
+  next.add(title)` ternary-as-statement in `dashboard/page.tsx` and `today/page.tsx` — both
+  rewritten as if/else. If you see this pattern reintroduced elsewhere, it's an ESLint
+  `no-unused-expressions` error, not a runtime bug — Set mutators return nothing useful.
+- Verified end-to-end via raw `curl` against the CSRF/callback/session endpoints (not just a
+  browser click-through): unauthenticated `/dashboard` → 302 to `/signin`; correct credentials →
+  session cookie set, `/dashboard` → 200; wrong password → `CredentialsSignin` error, still
+  redirected.
 
 ## Static shell data sources (important for the next session)
 

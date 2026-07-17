@@ -1,4 +1,5 @@
 import "dotenv/config";
+import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma";
 import type { TaskType, ResourceType } from "@prisma/client";
 
@@ -546,8 +547,28 @@ const months: MonthSeed[] = [
   },
 ];
 
+async function seedUser() {
+  const email = process.env.SEED_USER_EMAIL;
+  const password = process.env.SEED_USER_PASSWORD;
+  const name = process.env.SEED_USER_NAME;
+  if (!email || !password) {
+    console.log("Skipping user seed: SEED_USER_EMAIL/SEED_USER_PASSWORD not set.");
+    return;
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 12);
+  await prisma.user.upsert({
+    where: { email },
+    update: { name, hashedPassword },
+    create: { email, name, hashedPassword },
+  });
+  console.log(`Seeded user ${email}.`);
+}
+
 async function main() {
   console.log("Seeding Padikk curriculum...");
+
+  await seedUser();
 
   for (const phase of phases) {
     await prisma.phase.upsert({

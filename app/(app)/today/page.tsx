@@ -45,7 +45,11 @@ export default function TodayPage() {
   const toggleDone = (title: string) => {
     setDoneTitles((prev) => {
       const next = new Set(prev);
-      next.has(title) ? next.delete(title) : next.add(title);
+      if (next.has(title)) {
+        next.delete(title);
+      } else {
+        next.add(title);
+      }
       return next;
     });
   };
