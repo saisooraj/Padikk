@@ -50,20 +50,71 @@ This changed:
 | 15 | `/interviews` log | ✅ Visual shell done, static data |
 | 16 | `/review` weekly form | ✅ Visual shell done, static data |
 | 17 | `/settings` | ✅ Visual shell done, static data |
-| 18 | Wire all API routes (`app/api/**`) | 🟡 Dashboard + Today + Roadmap + DSA + Projects wired; 5 pages left |
+| 18 | Wire all API routes (`app/api/**`) | 🟡 Dashboard + Today + Roadmap + DSA + Projects + Notes wired; 4 pages left |
 | 19 | Loading states, error boundaries, empty states | 🟡 Empty states done per-page; no loading.tsx/error.tsx yet |
 | 20 | Responsive mobile layout per page | 🟡 Shell + grids are responsive; not device-tested |
 | 21 | Dark mode polish, accessibility pass | 🟡 Both themes render correctly; no accessibility pass yet |
 
-**Dashboard, Today, Roadmap, DSA, and Projects are now wired; the other 5 pages are still
+**Dashboard, Today, Roadmap, DSA, Projects, and Notes are now wired; the other 4 pages are still
 static/client-state shells** — auth gates them, but no Prisma queries or API routes are wired in
 for those yet. This was a deliberate scope choice for the design pivot: get the whole app visually
 right first, wire data in one page at a time afterward. See "Static shell data sources" below for
 exactly what's real vs. placeholder per remaining page.
 
-**Next up: continue step 18 with `/notes`**, then `/stats`, `/interviews`, `/review`, `/settings`.
+**Next up: continue step 18 with `/stats`**, then `/interviews`, `/review`, `/settings`.
 Building one page per session/turn now, going in that order — see "Session-closing checklist"
 below, keep doing this rather than batching multiple pages into one pass.
+
+## Notes wiring (step 18, sixth page)
+
+Followed the DSA/Projects pattern — `Note` is user-created with no seed data, so this needed full
+CRUD, not just read-mostly queries:
+
+- `lib/queries/notes.ts` — `getNotesData(userId)`: all of this user's `Note` rows, `orderBy:
+  updatedAt desc`. No server-side pin-sort (unlike DSA's server-computed stats) — pinned-first
+  ordering is cheap client-side and matches what the old static shell did, so `NotesClient` re-sorts
+  the same way after fetch.
+- **New API routes**, both under `auth()` guard, same shape as DSA/Projects:
+  - `POST /api/notes` — creates a note (`title` required and trimmed; `content` defaults to `""`,
+    `tags` defaults to `[]`, `monthRef` optional). Returns `{ note }`.
+  - `PATCH /api/notes/[id]` — flat field patch (title/content/tags/monthRef/pinned), same shape as
+    Projects' route rather than DSA's action-based one — Notes has no state-machine-like transitions
+    to model, just independent editable fields. Ownership check (`findFirst({ id, userId })`, 404 if
+    missing) before any write; empty/whitespace-only `title` 400s.
+  - `DELETE /api/notes/[id]` — same ownership check, then deletes.
+- `app/(app)/notes/NotesClient.tsx` — same two-column search-list/detail layout as the old static
+  shell, now with: an inline "+ New" note form in the list panel, an editable title/content/tags/
+  month-ref (via `MONTHS` from `lib/curriculum-data.ts`) form directly in the detail panel (no
+  separate view/edit mode — matches the "plain textarea view" scope from step 13, no Tiptap), a
+  Pin/Unpin button that PATCHes immediately (no dirty-state gate, unlike the other fields), and a
+  Save button gated on `isDirty` for the rest. Delete button in the detail header, `confirm()`
+  before calling `DELETE`, same UX as DSA's delete.
+- **Real `Date` props pass through the Server→Client boundary fine** — `formatDistanceToNow(note
+  .updatedAt, ...)` works directly on the Prisma-returned `Date` without a manual `new Date()` cast
+  or a server-computed offset, same as Projects' `format(selected.startedAt, "MMM d")`. Don't
+  over-engineer date handling for new pages; only reach for a server-computed day-offset (like DSA's
+  `reviewInDays`) when the UI needs relative-day math, not just a formatted string.
+- **Verified end-to-end against the real DB**: confirmed `Note` was genuinely empty (0 rows) before
+  starting; confirmed unauthenticated `POST`/`PATCH`/`DELETE` all 401; confirmed `POST` without a
+  title 400s; created a real note via `POST` and confirmed it rendered on `/notes`; PATCHed `pinned`,
+  then PATCHed title/content/tags/monthRef together and confirmed the edited title rendered on
+  `/notes`; confirmed a whitespace-only title PATCH 400s and a nonexistent id 404s on both `PATCH`
+  and `DELETE`; deleted the note and confirmed the table returned to 0 rows; confirmed the
+  pre-existing real `TaskCompletion` row (from actual browser use, not test data) and the `User` row
+  were untouched throughout.
+- **Hit the known `SEED_USER_PASSWORD` DB-hash-drift gotcha again** (see the Today wiring entry
+  below) — sign-in via curl failed with `CredentialsSignin` even though `.env`/`.env.local` agreed on
+  the password, meaning the DB's hash predated the current env value. **Did not run `npx prisma db
+  seed`** this time because a genuine `TaskCompletion` row already existed (real progress from the
+  user actively using the app in-browser during this session) and the seed script's `main()`
+  unconditionally `deleteMany`s `DailyTask` before recreating it, which FK-violates against any
+  existing `TaskCompletion` and would have forced deleting real user data to unblock a reseed.
+  Fixed narrowly instead: temporarily wrote `prisma/_reset-pw.ts` (deleted immediately after running)
+  that calls the same upsert `seedUser()` does in isolation — bcrypt-hashes `SEED_USER_PASSWORD` and
+  upserts only the `User` row's `hashedPassword`/`name`, touching nothing else. **If sign-in fails
+  with `CredentialsSignin` again and any per-user table already has real rows, use this narrow
+  password-only fix, not a full reseed** — a full reseed is only safe when every user-generated table
+  is confirmed empty first (as it was in the Today session).
 
 ## Projects wiring (step 18, fifth page)
 
@@ -326,17 +377,20 @@ provider was dropped entirely (not stubbed) — no `GOOGLE_CLIENT_ID`/`SECRET` a
 Two different philosophies were used, both deliberate — don't try to make them consistent with
 each other, they're answering different questions:
 
-- **Dashboard, Today, Roadmap, DSA & Projects** are wired to real Prisma queries now (see the
-  wiring sections above) and show *honest empty/zero states* (0 days active, "no activity yet",
-  months `NOT_STARTED` at 0%, "No problems tracked yet", all 12 projects `NOT_STARTED` etc.) rather
-  than fabricated history — these pages are about *this user's* real progress, and a fresh account
-  genuinely has none yet.
-- **Notes, Interviews, Weekly Review, Stats** still show *illustrative sample catalogs*
-  (`lib/notes-data.ts`, `lib/interviews-data.ts`, `lib/weekly-review-data.ts`,
-  `lib/stats-data.ts`) — these are catalog/list-management pages whose entire visual purpose
-  (table density, badge variety, chart shapes) is unreadable when empty, and their underlying
-  Prisma models are user-created with no seed data anyway. Stats' numbers are derived from the
-  same placeholder universe as Interviews so they stay internally consistent with each other.
+- **Dashboard, Today, Roadmap, DSA, Projects & Notes** are wired to real Prisma queries now (see
+  the wiring sections above) and show *honest empty/zero states* (0 days active, "no activity yet",
+  months `NOT_STARTED` at 0%, "No problems tracked yet", all 12 projects `NOT_STARTED`, "No notes
+  yet" etc.) rather than fabricated history — these pages are about *this user's* real progress, and
+  a fresh account genuinely has none yet. `lib/notes-data.ts`'s `NOTES` illustrative array is now
+  dead code post-wiring (nothing imports it) — left in place rather than deleted, since Interviews/
+  Weekly Review/Stats' placeholder files are still load-bearing and it's cheap to leave one unused
+  file rather than risk deleting something still referenced; safe to remove in a later cleanup pass.
+- **Interviews, Weekly Review, Stats** still show *illustrative sample catalogs*
+  (`lib/interviews-data.ts`, `lib/weekly-review-data.ts`, `lib/stats-data.ts`) — these are
+  catalog/list-management pages whose entire visual purpose (table density, badge variety, chart
+  shapes) is unreadable when empty, and their underlying Prisma models are user-created with no seed
+  data anyway. Stats' numbers are derived from the same placeholder universe as Interviews so they
+  stay internally consistent with each other.
   `lib/dsa-data.ts`'s `DSA_PATTERNS`/`PATTERN_LABEL` exports are still used post-wiring (real
   enum/label source for the DSA page's selects and pattern-mastery list), and its illustrative
   `DSA_PROBLEMS` array/`difficultyDistribution()` helper are *not* dead code — `/stats` still reads
