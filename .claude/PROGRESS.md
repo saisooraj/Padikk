@@ -50,22 +50,65 @@ This changed:
 | 15 | `/interviews` log | ✅ Visual shell done, static data |
 | 16 | `/review` weekly form | ✅ Visual shell done, static data |
 | 17 | `/settings` | ✅ Visual shell done, static data |
-| 18 | Wire all API routes (`app/api/**`) | 🟡 Dashboard + Today + Roadmap + DSA wired; 6 pages left |
+| 18 | Wire all API routes (`app/api/**`) | 🟡 Dashboard + Today + Roadmap + DSA + Projects wired; 5 pages left |
 | 19 | Loading states, error boundaries, empty states | 🟡 Empty states done per-page; no loading.tsx/error.tsx yet |
 | 20 | Responsive mobile layout per page | 🟡 Shell + grids are responsive; not device-tested |
 | 21 | Dark mode polish, accessibility pass | 🟡 Both themes render correctly; no accessibility pass yet |
 
-**Dashboard, Today, Roadmap, and DSA are now wired; the other 6 pages are still static/client-state
-shells** — auth gates them, but no Prisma queries or API routes are wired in for those yet. This
-was a deliberate scope choice for the design pivot: get the whole app visually right first, wire
-data in one page at a time afterward. See "Static shell data sources" below for exactly what's
-real vs. placeholder per remaining page.
+**Dashboard, Today, Roadmap, DSA, and Projects are now wired; the other 5 pages are still
+static/client-state shells** — auth gates them, but no Prisma queries or API routes are wired in
+for those yet. This was a deliberate scope choice for the design pivot: get the whole app visually
+right first, wire data in one page at a time afterward. See "Static shell data sources" below for
+exactly what's real vs. placeholder per remaining page.
 
-**Next up: continue step 18 with `/projects`** (real seeded curriculum, similar shape to Roadmap —
-`MonthProject` has no stored status field either, so it needs the same `UserSettings.currentMonth`-
-derived status Roadmap already established). Then `/notes`, `/stats`, `/interviews`, `/review`,
-`/settings`. Building one page per session/turn now, going in that order — see "Session-closing
-checklist" below, keep doing this rather than batching multiple pages into one pass.
+**Next up: continue step 18 with `/notes`**, then `/stats`, `/interviews`, `/review`, `/settings`.
+Building one page per session/turn now, going in that order — see "Session-closing checklist"
+below, keep doing this rather than batching multiple pages into one pass.
+
+## Projects wiring (step 18, fifth page)
+
+**Deviated from the plan noted in the previous session's entry** (which said this page would need
+"the same `UserSettings.currentMonth`-derived status Roadmap established," i.e. a read-only
+status like Roadmap's month cards). That's wrong once you look at the schema: there's a whole
+unused `Project` model (`userId`, `monthNumber`, `status: ProjectStatus`, `githubUrl`, `liveUrl`,
+`techStack`, `notes`, `startedAt`, `completedAt`) sitting alongside the seeded `MonthProject` —
+clearly built for real per-user editing (status toggle, links, notes), matching the original
+spec's "Edit Project Drawer" section exactly, and `lib/status-colors.ts` already had
+`projectStatusColor`/`projectStatusLabel` for its 4-value enum despite nothing using them yet. Used
+that model instead of a derived-status approach:
+
+- `lib/queries/projects.ts` — `getOrCreateProjects(userId)`: lazily creates one `Project` row per
+  user per month (12 total) from the seeded `MonthProject` catalog the first time they're missing —
+  same lazy-upsert idea as `UserSettings`/`Streak`, just 12 rows via `createMany` instead of one
+  via `upsert`. `name`/`description`/`techStack` start as a copy of the curriculum `MonthProject`
+  but are independently editable per user from there on (status defaults `NOT_STARTED`, matching
+  the schema default — a fresh account has genuinely started nothing, no fabricated progress).
+  Returns each `Project` row joined with `monthTitle` and `phase` (for the phase-color chip).
+- **New API route**, `PATCH /api/projects/[id]` (no `POST`/`DELETE` — these 12 rows are
+  system-seeded per user, not user-created, so there's nothing to add or remove, only edit; matches
+  the original spec's route list). `auth()` guard → ownership check (`findFirst({ id, userId })`,
+  404 if missing) → validates `status` against the 4-value enum before writing. Auto-stamps
+  `startedAt`/`completedAt` on status transition into `IN_PROGRESS`/`COMPLETED`/`DEPLOYED`, same
+  "auto unless already set" pattern as DSA's `solvedAt` — never clobbers a value once set, so this
+  doesn't fight a future manual date-picker if one gets added. `githubUrl`/`liveUrl`/`techStack`/
+  `notes` are flat field updates.
+- `app/(app)/projects/ProjectsClient.tsx` — same 4-column Kanban the old static shell had, now
+  grouped by real `Project.status` instead of a `CURRENT_MONTH`-derived one. Selecting a card opens
+  an inline detail panel (right column, same pattern as DSA's problem detail — no drawer component
+  exists in this codebase, don't reach for one) with status buttons and an editable
+  githubUrl/liveUrl/techStack(comma-separated)/notes form, saved via one PATCH on "Save details".
+  No manual start/complete date pickers were built (spec mentions them) — the auto-stamp above
+  covers the same need with less UI; revisit only if the user specifically asks to backdate a
+  project.
+- **Verified end-to-end against the real DB**: confirmed `Project` was genuinely empty (0 rows) for
+  the seed user before starting; hit `/projects` and confirmed all 12 rows were lazily created with
+  correct `name`/`techStack` counts matching the seeded `MonthProject`s and `status = NOT_STARTED`;
+  confirmed unauthenticated `PATCH` 401s, an invalid `status` 400s, and a nonexistent id 404s;
+  PATCHed a real transition to `IN_PROGRESS` with `githubUrl`/`liveUrl`/`techStack`/`notes` and
+  confirmed `startedAt` auto-set plus all fields persisted; reloaded `/projects` and confirmed the
+  card moved to the "In progress" column and rendered the GitHub/Live badges; deleted all 12 test
+  rows and reloaded once more to confirm they regenerate cleanly at `NOT_STARTED` with no leftover
+  test data, restoring genuine zero-state.
 
 ## DSA wiring (step 18, fourth page)
 
@@ -283,10 +326,11 @@ provider was dropped entirely (not stubbed) — no `GOOGLE_CLIENT_ID`/`SECRET` a
 Two different philosophies were used, both deliberate — don't try to make them consistent with
 each other, they're answering different questions:
 
-- **Dashboard, Today, Roadmap & DSA** are wired to real Prisma queries now (see the wiring
-  sections above) and show *honest empty/zero states* (0 days active, "no activity yet", months
-  `NOT_STARTED` at 0%, "No problems tracked yet" etc.) rather than fabricated history — these pages
-  are about *this user's* real progress, and a fresh account genuinely has none yet.
+- **Dashboard, Today, Roadmap, DSA & Projects** are wired to real Prisma queries now (see the
+  wiring sections above) and show *honest empty/zero states* (0 days active, "no activity yet",
+  months `NOT_STARTED` at 0%, "No problems tracked yet", all 12 projects `NOT_STARTED` etc.) rather
+  than fabricated history — these pages are about *this user's* real progress, and a fresh account
+  genuinely has none yet.
 - **Notes, Interviews, Weekly Review, Stats** still show *illustrative sample catalogs*
   (`lib/notes-data.ts`, `lib/interviews-data.ts`, `lib/weekly-review-data.ts`,
   `lib/stats-data.ts`) — these are catalog/list-management pages whose entire visual purpose
@@ -298,15 +342,8 @@ each other, they're answering different questions:
   `DSA_PROBLEMS` array/`difficultyDistribution()` helper are *not* dead code — `/stats` still reads
   them directly (see `app/(app)/stats/page.tsx`) since Stats isn't wired yet. Don't delete or
   change `DSA_PROBLEMS`'s shape until Stats is wired too, or its build will break.
-- **Projects** still uses the static `lib/curriculum-data.ts` mirror — same real seeded curriculum
-  Roadmap used to read before this session's wiring, so swapping it for `lib/queries/roadmap.ts`'s
-  `Month`/`MonthProject` query shape (or a thin variant of it) should be a drop-in, not a rewrite.
 - All placeholder-data files use the real Prisma enum values/casing (e.g. `"NEEDS_REVIEW"`, not
   the mockup's `"needs review"`) for the same reason.
-- Project "status" (not-started/in-progress/completed) is still derived from a `CURRENT_MONTH`
-  constant client-side in `/projects` — `MonthProject` has no stored status field either, so once
-  it's wired it'll need the same server-side derivation Roadmap now does (`UserSettings
-  .currentMonth` comparison), not a stored field.
 
 ## Key decisions & gotchas (don't relitigate these)
 
