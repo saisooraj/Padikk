@@ -50,21 +50,50 @@ This changed:
 | 15 | `/interviews` log | ✅ Visual shell done, static data |
 | 16 | `/review` weekly form | ✅ Visual shell done, static data |
 | 17 | `/settings` | ✅ Visual shell done, static data |
-| 18 | Wire all API routes (`app/api/**`) | 🟡 Dashboard + Today wired; 8 pages left |
+| 18 | Wire all API routes (`app/api/**`) | 🟡 Dashboard + Today + Roadmap wired; 7 pages left |
 | 19 | Loading states, error boundaries, empty states | 🟡 Empty states done per-page; no loading.tsx/error.tsx yet |
 | 20 | Responsive mobile layout per page | 🟡 Shell + grids are responsive; not device-tested |
 | 21 | Dark mode polish, accessibility pass | 🟡 Both themes render correctly; no accessibility pass yet |
 
-**Dashboard and Today are now wired; the other 8 pages are still static/client-state shells** —
-auth gates them, but no Prisma queries or API routes are wired in for those yet. This was a
-deliberate scope choice for the design pivot: get the whole app visually right first, wire data in
-one page at a time afterward. See "Static shell data sources" below for exactly what's real vs.
-placeholder per remaining page.
+**Dashboard, Today, and Roadmap are now wired; the other 7 pages are still static/client-state
+shells** — auth gates them, but no Prisma queries or API routes are wired in for those yet. This
+was a deliberate scope choice for the design pivot: get the whole app visually right first, wire
+data in one page at a time afterward. See "Static shell data sources" below for exactly what's
+real vs. placeholder per remaining page.
 
-**Next up: continue step 18 with `/roadmap` (real curriculum data already mirrored in
-`lib/curriculum-data.ts`, so this one's mostly swapping the static import for a query module —
-no new derivation logic needed like Today's "current week" was), then `/dsa`, `/projects`,
-`/notes`, `/stats`, `/interviews`, `/review`, `/settings`.**
+**Next up: continue step 18 with `/dsa` — first page with no existing Dashboard/Today-style
+pattern to lean on (list/filter/detail over a user-created `DSAProblem` table with no seed data,
+so a genuinely empty DB is the real initial state, not a placeholder catalog to swap out). Then
+`/projects` (real seeded curriculum, similar shape to Roadmap), `/notes`, `/stats`, `/interviews`,
+`/review`, `/settings`.**
+
+## Roadmap wiring (step 18, third page)
+
+- `lib/queries/roadmap.ts` — `getRoadmapData(userId)`: all 6 `Phase` rows (for the legend) plus
+  all 12 `Month` rows with `phase`/`project`/`topics`/`resources` included and `dailyTasks` (with
+  this user's `completions`) used only to compute status/progress, then stripped back out of the
+  returned shape.
+- **Month status/progress moved server-side**, resolving the note in "Static shell data sources"
+  below that flagged this as owed: no stored status field, so it's derived from
+  `UserSettings.currentMonth` exactly like the old client-side `CURRENT_MONTH` constant did —
+  `number < currentMonth` → `COMPLETED` (100%, treated as done by definition since progress moved
+  past it, regardless of actual per-task completion), `=== currentMonth` → `IN_PROGRESS` (real
+  `completedTasks/totalTasks` ratio, same formula as Dashboard's `monthProgress`), `>` → 0%. Same
+  "past months aren't re-verified, only the current one has real progress" philosophy as before,
+  now computed from the DB instead of hardcoded to 0/0/100.
+- `app/(app)/roadmap/RoadmapClient.tsx` — same expand/collapse UI as the old static shell, just
+  reading `data.months[i].topics`/`.resources`/`.project` instead of `lib/curriculum-data.ts`.
+  `month.project` is optional in the schema (`MonthProject?`) even though every seeded month has
+  one — guarded with `?? "No project"` rather than assuming it's always present.
+- No new API routes needed — read-only page, reuses the existing task-toggle route's effect on
+  `TaskCompletion` (toggling a task elsewhere immediately changes Roadmap's current-month progress
+  on next load, verified below).
+- **Verified end-to-end against the real DB**: signed in via curl, confirmed `/roadmap` renders
+  real phase names, and Month 1 as `IN_PROGRESS` at 0% / months 2–12 as `NOT_STARTED` at 0%
+  (matching the genuine zero-state left after the Today session's cleanup); toggled one task
+  completion via the existing API route and confirmed Month 1's progress recalculated to 8%
+  (1/12 tasks) on the next `/roadmap` fetch, then toggled it back off and confirmed `TaskCompletion`
+  count returned to 0.
 
 ## Today wiring (step 18, second page)
 
@@ -200,25 +229,26 @@ provider was dropped entirely (not stubbed) — no `GOOGLE_CLIENT_ID`/`SECRET` a
 Two different philosophies were used, both deliberate — don't try to make them consistent with
 each other, they're answering different questions:
 
-- **Dashboard & Today** show *honest empty/zero states* (0 days active, "no activity yet", "no
-  DSA due" etc.) rather than fabricated history — these pages are about *this user's* real
-  progress, and a fresh account genuinely has none yet.
-- **DSA Tracker, Notes, Interviews, Weekly Review, Stats** show *illustrative sample catalogs*
-  (`lib/dsa-data.ts`, `lib/notes-data.ts`, `lib/interviews-data.ts`,
+- **Dashboard, Today & Roadmap** are wired to real Prisma queries now (see the wiring sections
+  above) and show *honest empty/zero states* (0 days active, "no activity yet", months
+  `NOT_STARTED` at 0% etc.) rather than fabricated history — these pages are about *this user's*
+  real progress, and a fresh account genuinely has none yet.
+- **DSA Tracker, Notes, Interviews, Weekly Review, Stats** still show *illustrative sample
+  catalogs* (`lib/dsa-data.ts`, `lib/notes-data.ts`, `lib/interviews-data.ts`,
   `lib/weekly-review-data.ts`, `lib/stats-data.ts`) — these are catalog/list-management pages
   whose entire visual purpose (table density, badge variety, chart shapes) is unreadable when
   empty, and their underlying Prisma models are user-created with no seed data anyway. Stats'
   numbers are derived from the same placeholder universe as DSA/Interviews so they stay internally
   consistent with each other.
-- **Roadmap, Projects** use the *real* seeded curriculum (`lib/curriculum-data.ts`, a static
-  mirror of `prisma/seed.ts` — field shapes intentionally match the Prisma schema so swapping in
-  real queries later is a drop-in, not a rewrite).
+- **Projects** still uses the static `lib/curriculum-data.ts` mirror — same real seeded curriculum
+  Roadmap used to read before this session's wiring, so swapping it for `lib/queries/roadmap.ts`'s
+  `Month`/`MonthProject` query shape (or a thin variant of it) should be a drop-in, not a rewrite.
 - All placeholder-data files use the real Prisma enum values/casing (e.g. `"NEEDS_REVIEW"`, not
   the mockup's `"needs review"`) for the same reason.
-- Month/Project "status" (not-started/in-progress/completed) is derived from a single
-  `CURRENT_MONTH` constant in each page — Month has no stored status field in the schema (it's
-  progress-derived), Project does, so Project will switch to reading it directly once persistence
-  lands; Month's derivation logic will need to move server-side.
+- Project "status" (not-started/in-progress/completed) is still derived from a `CURRENT_MONTH`
+  constant client-side in `/projects` — `MonthProject` has no stored status field either, so once
+  it's wired it'll need the same server-side derivation Roadmap now does (`UserSettings
+  .currentMonth` comparison), not a stored field.
 
 ## Key decisions & gotchas (don't relitigate these)
 
