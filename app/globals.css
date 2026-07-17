@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Padikk surface palette */
+  --bg: #0b0f1a;
+  --surface: #131828;
+  --surface2: #1a2035;
+  --border: #1d2540;
+  --text: #e2e8f8;
+  --muted: #6b7899;
+
+  /* Phase colors */
+  --backend: #3b82f6;
+  --ai: #e879f9;
+  --cloud: #8b5cf6;
+  --dsa: #f59e0b;
+  --sysdesign: #06b6d4;
+  --interview: #10b981;
+
+  /* Status colors */
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #3b82f6;
+
+  /* shadcn/ui tokens mapped to the Padikk dark palette (HSL triplets) */
+  --background: 226 39% 8%;
+  --foreground: 226 55% 92%;
+  --card: 226 32% 12%;
+  --card-foreground: 226 55% 92%;
+  --popover: 226 32% 12%;
+  --popover-foreground: 226 55% 92%;
+  --primary: 292 91% 73%;
+  --primary-foreground: 226 39% 8%;
+  --secondary: 227 30% 17%;
+  --secondary-foreground: 226 55% 92%;
+  --muted-hsl: 227 30% 17%;
+  --muted-foreground: 228 20% 56%;
+  --accent: 227 30% 17%;
+  --accent-foreground: 226 55% 92%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 226 55% 92%;
+  --border-hsl: 228 35% 17%;
+  --input: 228 35% 17%;
+  --ring: 292 91% 73%;
+  --radius: 0.75rem;
+}
+
+* {
+  border-color: hsl(var(--border-hsl));
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
