@@ -1,0 +1,337 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// --- AUTH (NextAuth) ---
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// --- CORE USER ---
+
+model User {
+  id              String            @id @default(cuid())
+  name            String?
+  email           String?           @unique
+  emailVerified   DateTime?
+  image           String?
+  createdAt       DateTime          @default(now())
+  accounts        Account[]
+  sessions        Session[]
+  logs            DailyLog[]
+  dsaProblems     DSAProblem[]
+  projects        Project[]
+  notes           Note[]
+  interviews      MockInterview[]
+  weeklyReviews   WeeklyReview[]
+  streak          Streak?
+  settings        UserSettings?
+  taskCompletions TaskCompletion[]
+}
+
+// --- CURRICULUM (seeded, not user-created) ---
+
+model Phase {
+  id          String  @id @default(cuid())
+  number      Int     @unique
+  name        String
+  description String
+  color       String // CSS var name, e.g. "backend" | "ai" | "cloud" | "dsa" | "sysdesign" | "interview"
+  months      Month[]
+}
+
+model Month {
+  id         String        @id @default(cuid())
+  number     Int           @unique // 1–12
+  title      String
+  subtitle   String
+  phaseId    String
+  phase      Phase         @relation(fields: [phaseId], references: [id])
+  topics     Topic[]
+  dailyTasks DailyTask[]
+  project    MonthProject?
+  resources  Resource[]
+  logs       DailyLog[]
+}
+
+model Topic {
+  id       String @id @default(cuid())
+  name     String
+  monthId  String
+  month    Month  @relation(fields: [monthId], references: [id])
+  category String // "learn" | "practice" | "build"
+  order    Int
+}
+
+model DailyTask {
+  id          String           @id @default(cuid())
+  title       String
+  description String?
+  monthId     String
+  month       Month            @relation(fields: [monthId], references: [id])
+  weekNumber  Int // 1–4 (which week of the month)
+  duration    Int // recommended minutes
+  type        TaskType
+  order       Int
+  completions TaskCompletion[]
+}
+
+enum TaskType {
+  LEARN
+  BUILD
+  DSA
+  REVIEW
+  MOCK
+  READ
+}
+
+model TaskCompletion {
+  id          String    @id @default(cuid())
+  taskId      String
+  task        DailyTask @relation(fields: [taskId], references: [id])
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  completedAt DateTime  @default(now())
+  timeSpent   Int // actual minutes spent
+  notes       String?
+
+  @@unique([taskId, userId])
+}
+
+model MonthProject {
+  id          String   @id @default(cuid())
+  monthId     String   @unique
+  month       Month    @relation(fields: [monthId], references: [id])
+  name        String
+  description String
+  techStack   String[]
+}
+
+model Resource {
+  id       String       @id @default(cuid())
+  monthId  String
+  month    Month        @relation(fields: [monthId], references: [id])
+  title    String
+  url      String
+  type     ResourceType
+  priority Int // 1 = must, 2 = recommended, 3 = optional
+}
+
+enum ResourceType {
+  BOOK
+  COURSE
+  VIDEO
+  ARTICLE
+  TOOL
+  REPO
+}
+
+// --- USER TRACKING ---
+
+model DailyLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  monthId   String
+  month     Month    @relation(fields: [monthId], references: [id])
+  date      DateTime @db.Date
+  totalTime Int // minutes logged
+  mood      Int // 1–5 (1=rough, 5=great)
+  summary   String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, date])
+}
+
+model Streak {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id])
+  currentStreak   Int       @default(0)
+  longestStreak   Int       @default(0)
+  lastActiveDate  DateTime?
+  totalDaysLogged Int       @default(0)
+}
+
+model DSAProblem {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id])
+  title       String
+  leetcodeUrl String?
+  difficulty  Difficulty
+  pattern     DSAPattern
+  status      ProblemStatus @default(TODO)
+  timeSpent   Int? // minutes to solve
+  solvedAt    DateTime?
+  reviewAt    DateTime? // spaced repetition next review date
+  attempts    Int           @default(0)
+  notes       String?       @db.Text
+  tags        String[]
+  monthTarget Int? // target month (8, 9, or 10 in the roadmap)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum DSAPattern {
+  ARRAYS_STRINGS
+  HASH_MAPS
+  TWO_POINTERS
+  SLIDING_WINDOW
+  BINARY_SEARCH
+  LINKED_LISTS
+  STACKS_QUEUES
+  BINARY_TREES
+  BST
+  GRAPHS
+  TOPOLOGICAL_SORT
+  HEAPS
+  GREEDY
+  DP_BASIC
+  DP_ADVANCED
+  BACKTRACKING
+  SHORTEST_PATH
+  UNION_FIND
+  TRIES
+  BIT_MANIPULATION
+  OTHER
+}
+
+enum ProblemStatus {
+  TODO
+  ATTEMPTED
+  SOLVED
+  NEEDS_REVIEW
+  OWNED
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id])
+  monthNumber Int // 1–12
+  name        String
+  description String
+  status      ProjectStatus @default(NOT_STARTED)
+  githubUrl   String?
+  liveUrl     String?
+  techStack   String[]
+  startedAt   DateTime?
+  completedAt DateTime?
+  notes       String?       @db.Text
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+enum ProjectStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  DEPLOYED
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  content   String   @db.Text // rich text JSON (Tiptap)
+  monthRef  Int? // which month it relates to (optional)
+  tags      String[]
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MockInterview {
+  id           String        @id @default(cuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id])
+  date         DateTime
+  platform     String // "Pramp" | "interviewing.io" | "Peer" | "Self"
+  type         InterviewType
+  company      String?
+  difficulty   Int // 1–5
+  performance  Int // 1–5
+  topics       String[]
+  feedback     String?       @db.Text
+  improvements String?       @db.Text
+  createdAt    DateTime      @default(now())
+}
+
+enum InterviewType {
+  DSA
+  SYSTEM_DESIGN_HLD
+  SYSTEM_DESIGN_LLD
+  BEHAVIORAL
+  AI_SYSTEM_DESIGN
+  FULL_LOOP
+}
+
+model WeeklyReview {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  weekStart     DateTime @db.Date
+  weekEnd       DateTime @db.Date
+  totalMinutes  Int
+  dsaSolved     Int      @default(0)
+  wins          String[]
+  blockers      String[]
+  nextWeekFocus String?
+  rating        Int // 1–5
+  createdAt     DateTime @default(now())
+}
+
+model UserSettings {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id])
+  dailyGoalMinutes Int      @default(90)
+  startDate        DateTime
+  currentMonth     Int      @default(1)
+  reminderEnabled  Boolean  @default(false)
+  reminderTime     String? // "09:00"
+  timezone         String   @default("Asia/Kolkata")
+}
