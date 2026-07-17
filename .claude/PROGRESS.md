@@ -40,7 +40,7 @@ This changed:
 | 5 | Seed script (curriculum data) | ✅ Done |
 | 6 | NextAuth config (`auth.ts`, API route) | ✅ Done (Credentials-only, see below — not Google) |
 | 7 | Root layout + Sidebar + PageShell | ✅ Done (rebuilt for the design pivot) |
-| 8 | `/dashboard` page | ✅ Visual shell done, static data |
+| 8 | `/dashboard` page | ✅ Wired to real Prisma queries (see below) |
 | 9 | `/today` page + Pomodoro timer | ✅ Visual shell done, static data |
 | 10 | `/roadmap` page | ✅ Visual shell done, static data |
 | 11 | `/dsa` page (list/filter/detail; no `/dsa/[id]` route yet) | ✅ Visual shell done, static data |
@@ -55,14 +55,73 @@ This changed:
 | 20 | Responsive mobile layout per page | 🟡 Shell + grids are responsive; not device-tested |
 | 21 | Dark mode polish, accessibility pass | 🟡 Both themes render correctly; no accessibility pass yet |
 
-**Every page above is still a static/client-state shell** — auth now gates them, but no Prisma
-queries or API routes (step 18) are wired in yet. This was a deliberate scope choice for the
-design pivot: get the whole app visually right first, wire data in afterward. See "Static shell
-data sources" below for exactly what's real vs. placeholder per page.
+**Dashboard is now wired (this session); the other 9 pages are still static/client-state shells**
+— auth gates them, but no Prisma queries or API routes are wired in for those yet. This was a
+deliberate scope choice for the design pivot: get the whole app visually right first, wire data in
+one page at a time afterward. See "Static shell data sources" below for exactly what's real vs.
+placeholder per remaining page.
 
-**Next up: step 18 (wire real Prisma queries into every page below, using `auth()` /
-`useSession()` to scope queries to the signed-in user), replacing the static data sources one page
-at a time.**
+**Next up: continue step 18 with `/today` (near-identical shape to Dashboard — same week-tasks
+list, same log form, plus the Pomodoro timer, which stays client-only/no persistence), then work
+through the rest.**
+
+## Dashboard wiring (step 18, first page done this session)
+
+Established the pattern the rest of step 18 should follow:
+
+- **Server Component fetches, Client Component renders.** `app/(app)/dashboard/page.tsx` is now an
+  `async` Server Component: calls `auth()`, redirects to `/signin` if no session (belt-and-braces —
+  middleware already gates this route), then calls `getDashboardData(userId)` and passes the result
+  as a single `data` prop to `app/(app)/dashboard/DashboardClient.tsx` (client component, holds all
+  interactive state — task checkboxes, log form — and calls `usePageHeader` since that hook needs
+  `"use client"`). Follow this split for every other page in step 18, not a client component doing
+  its own `fetch("/api/...")` on mount.
+- **Query module**: `lib/queries/dashboard.ts` — `getDashboardData(userId)` plus two reusable
+  `getOrCreateUserSettings`/`getOrCreateStreak` helpers (both `UserSettings` and `Streak` are
+  1-per-user rows with no seed data, so they're lazily upserted with defaults on first read rather
+  than requiring an onboarding flow). Mirror this "one query module per page" structure for the
+  remaining pages rather than inlining Prisma calls in page.tsx.
+- **"Current week" is progress-derived, not stored**: there's no `weekNumber` field anywhere
+  tracking progress (only `UserSettings.currentMonth`, which the user sets by hand in Settings).
+  Dashboard computes it as the first week (1–4) in the current month that still has an incomplete
+  `DailyTask` (checked via `TaskCompletion` existence), defaulting to week 4 once everything in the
+  month is done. Reuse this exact logic for `/today` rather than reinventing it — don't add a
+  stored "current week" field, this was intentional.
+- **Two new API routes**, both under `auth()` guard, both following the same shape (`auth()` →
+  401 if no session → mutate → return small JSON):
+  - `POST /api/tasks/[taskId]/toggle` — toggles a `TaskCompletion` row for the signed-in user
+    (delete if exists, else create with `timeSpent = task.duration`). Returns `{ done: boolean }`.
+  - `POST /api/daily-log` — upserts today's `DailyLog` (`{ userId_date }` compound unique) and
+    updates `Streak` in the same request: `currentStreak` resets to 1 if `lastActiveDate` isn't
+    exactly yesterday, +1 if it is, unchanged if re-saving the same day (checked via whether a
+    `DailyLog` already existed for today before the upsert — re-saving must not double-count).
+    Client re-fetches via `router.refresh()` on success rather than optimistic local state.
+  - `lib/parse-duration.ts` — `parseDurationToMinutes("1h 45m" | "90m" | "1.5h" | "45")`, used by
+    the daily-log route to convert the free-text time input into the `Int` minutes column.
+- **Timezone gotcha (real bug hit and fixed this session, watch for it elsewhere)**: the app's
+  server runs in IST (UTC+5:30). `DailyLog.date` / any future `@db.Date` column has no timezone —
+  Postgres stores it as given. Building "today" with date-fns `startOfDay(new Date())` produces
+  **local** midnight, which serializes to UTC and lands on the **previous** calendar day for any
+  positive-UTC-offset server (verified: a save at 2026-07-17 local landed as `2026-07-16` in the
+  DB). Fixed with `lib/date-only.ts`'s `dateOnly()` — builds the Date from local Y/M/D at **UTC**
+  midnight instead, so the round trip through a `date` column keeps the correct calendar day. Use
+  `dateOnly()`, not `startOfDay(new Date())`, anywhere a JS `Date` is about to be written to or
+  compared against a `@db.Date` column (`DailyLog.date`, `WeeklyReview.weekStart/weekEnd`,
+  `Streak.lastActiveDate` will hit this in later steps too).
+- **Verified end-to-end against the real DB** (not just `tsc`/`next build`): signed in via curl
+  against `/api/auth/callback/credentials` (same approach as the auth session), then hit
+  `/dashboard` and confirmed real seeded task titles/ids render; toggled a real task completion on
+  and off and confirmed the `TaskCompletion` row was created then deleted; saved a daily log and
+  confirmed `DailyLog`/`Streak` rows update correctly including the same-day-resave-doesn't-double-
+  count case; confirmed the momentum grid and recent-activity list reflect the saved log after a
+  `router.refresh()`. All test data cleaned up afterward (`DailyLog` deleted, `Streak` counters
+  reset to 0) so the DB is back to genuine zero-state, not left with test artifacts.
+- **Found, did not fix**: `.env`'s `SEED_USER_PASSWORD` (`padikk-dev-1234`) and `.env.local`'s
+  (`Sai@1235`) have drifted out of sync. Since the seed script only reads `.env` (its
+  `dotenv/config` doesn't load `.env.local`), the DB's hashed password matches `.env`'s value, not
+  `.env.local`'s — signing in with the password currently in `.env.local` will fail with
+  `CredentialsSignin`. Flagged to the user, not resolved — didn't want to guess which value is the
+  intended one and silently overwrite the other file.
 
 ## Auth (step 6, done this session)
 
