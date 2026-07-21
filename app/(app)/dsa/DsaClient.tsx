@@ -168,11 +168,13 @@ export function DsaClient({ data }: { data: DsaData }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search problems…"
+            aria-label="Search problems"
             className="min-w-[160px] flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px] text-[var(--text)] placeholder:text-[var(--muted)]"
           />
           <select
             value={pattern}
             onChange={(e) => setPattern(e.target.value as DSAPattern | "all")}
+            aria-label="Filter by pattern"
             className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-2 text-[13px] text-[var(--text)]"
           >
             <option value="all">All patterns</option>
@@ -185,6 +187,7 @@ export function DsaClient({ data }: { data: DsaData }) {
           <select
             value={difficulty}
             onChange={(e) => setDifficulty(e.target.value as Difficulty | "all")}
+            aria-label="Filter by difficulty"
             className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-2 text-[13px] text-[var(--text)]"
           >
             <option value="all">All difficulty</option>
@@ -197,6 +200,7 @@ export function DsaClient({ data }: { data: DsaData }) {
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value as ProblemStatus | "all")}
+            aria-label="Filter by status"
             className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-2 text-[13px] text-[var(--text)]"
           >
             <option value="all">All status</option>

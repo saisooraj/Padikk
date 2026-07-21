@@ -53,17 +53,71 @@ This changed:
 | 18 | Wire all API routes (`app/api/**`) | ✅ All 10 pages wired to real Prisma queries |
 | 19 | Loading states, error boundaries, empty states | ✅ Done — shared `loading.tsx`/`error.tsx`, empty states already done per-page |
 | 20 | Responsive mobile layout per page | ✅ Audited all 10 pages; fixed 2 dense tables that didn't collapse |
-| 21 | Dark mode polish, accessibility pass | 🟡 Both themes render correctly; no accessibility pass yet |
+| 21 | Dark mode polish, accessibility pass | ✅ Contrast-audited both themes, fixed focus/labels; 1 known gap flagged below |
 
-**Step 18 is done — all 10 pages are wired to real Prisma queries.** No more static/client-state
-shells or illustrative placeholder catalogs feeding any page's primary data (see "Static shell data
-sources" below, which is now fully superseded — kept temporarily for the historical philosophy
-notes, safe to delete once steps 19–21 are done too).
+**All 21 steps of the original build plan are now done.** No more static/client-state shells or
+illustrative placeholder catalogs feeding any page's primary data (see "Static shell data sources"
+below, fully superseded — kept for the historical philosophy notes, safe to delete in a cleanup
+pass). This session moved off the earlier one-page-per-session-turn cadence — the user asked to
+work through everything remaining in the plan (steps 18–21) in one continuous pass instead, still
+with the same rigor (real-DB verification, one commit per page/phase).
 
-**Next up: step 21** (accessibility pass). This session moved off the earlier
-one-page-per-session-turn cadence — the user asked to work through everything remaining in this
-plan in one continuous pass instead, still with the same rigor (real-DB verification, one commit
-per page/phase).
+**One open item flagged for the user, not silently fixed**: the accessibility pass (step 21, see
+below) found that form input borders (`--border`/`--border-strong` against `--surface2`, the actual
+adjacent background most inputs use) fail WCAG 1.4.11's 3:1 non-text-contrast minimum in **both**
+themes (dark: 1.14–1.42:1, light: 1.22–1.64:1). This is a global design-token issue, not a
+page-specific bug — didn't touch it, since `globals.css`'s color formula was explicitly imported
+from the user's design mockup and "don't hand-pick new colors outside that formula" is an existing
+rule (see "Key decisions" below). Worth asking the user whether they want `--border`/
+`--border-strong` bumped for contrast, and if so by how much, before touching the token formula.
+
+**What's left is genuinely open-ended, not a checklist**: Tiptap rich text for Notes (step 13
+explicitly scoped it out), a real `/dsa/[id]` or `/interviews/[id]` deep-linkable route if ever
+wanted, swapping `DATABASE_URL` to a real cloud Postgres before any real deployment, and the
+border-contrast fix above if the user wants it. None of these are "step N still pending" — they're
+possible future asks, listed here so a future session doesn't mistake this for unfinished plan work.
+
+## Accessibility pass (step 21)
+
+Contrast-audited both themes' actual OKLCH token values (not just eyeballing render output) and
+fixed the accessible-name/keyboard-focus gaps a code-level audit could find with no
+browser/screen-reader access in this environment:
+
+- **Contrast audit**: converted every relevant `--text`/`--muted`/`--brand`/`--danger` OKLCH token
+  to sRGB and computed real WCAG contrast ratios (not L%-value eyeballing) against the backgrounds
+  they're actually used on, in both themes. Every text pairing checked passes WCAG AA comfortably
+  (4.97:1–17.45:1 across text/muted/brand-text against bg/surface/surface2 in both themes — well
+  above the 4.5:1 text minimum). The one real finding — input border contrast — is flagged above,
+  not fixed, since it's a global token change outside this pass's scope.
+- **Keyboard focus**: found 3 inputs in `NotesClient.tsx` (title, tags, content) with `outline-none`
+  and **zero** replacement focus style — a real WCAG 2.4.7 violation, tabbing to them left no visible
+  indicator at all. Added `focus-visible:ring-2 focus-visible:ring-[var(--brand)]` to all three.
+  Every other interactive element in the app is a raw `<button>`/`<input>` (the app never actually
+  uses the `components/ui/button.tsx` shadcn primitive — grepped, 0 usages in `app/(app)/**`) and
+  none of the other ~45 buttons set `outline-none`, so they already keep the browser's default
+  focus-visible outline — unstyled/not brand-matched, but not actually broken. Left those alone;
+  restyling 45 buttons application-wide is a design-system change, not a pass-scope fix.
+- **Accessible names**: added `aria-label` to the DSA/Notes search inputs and DSA's three filter
+  `<select>`s (placeholder-as-name is spec-valid but disappears once text is typed, and bare filter
+  selects had no persistent name describing what they filter). Added `role="group"` +
+  `aria-label`/`aria-pressed` to the 1–5 button-row selectors (Interviews' `ScoreRow` for
+  difficulty/performance, Review's rating row) — previously just a visually-adjacent `<div>` label
+  with no programmatic association to the button group. Settings' inputs already got real
+  `<label htmlFor>` elements in the Settings wiring commit earlier this session — nothing further
+  needed there.
+- **Already correct, checked not touched**: semantic landmarks (`<aside>`/`<main>`/`<nav>` in
+  `PageShell`), the theme-toggle `Switch` already had `aria-label="Toggle theme"`, no icon-only
+  buttons anywhere except `MobileNav` (which pairs every icon with visible text), Radix-based
+  `Switch`/dropdown primitives handle their own `aria-checked`/keyboard behavior.
+- **Dark mode**: both themes were already verified rendering correctly in the design-pivot session;
+  nothing in this session's changes introduced a hardcoded color outside the `var(--x)` token system
+  (grepped for stray hex/rgb in every file touched this session — none found), so no re-verification
+  needed beyond confirming the build stayed green.
+- **Limitation, same as step 19**: no headless browser available in this environment (confirmed no
+  Playwright/Puppeteer) — verified via `curl` that the new `aria-label`/`role` attributes render in
+  the served HTML, and via computed contrast math, but couldn't run a real screen reader or visually
+  confirm focus rings. If a future session has browser/device access, a real screen-reader pass
+  (VoiceOver/NVDA) would catch anything a code-level audit can't.
 
 ## Responsive mobile audit (step 20)
 

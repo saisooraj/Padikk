@@ -55,14 +55,16 @@ function formFromRow(row: InterviewRow): FormState {
   };
 }
 
-function ScoreRow({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+function ScoreRow({ value, onChange, label }: { value: number; onChange: (n: number) => void; label: string }) {
   return (
-    <div className="flex gap-1.5">
+    <div className="flex gap-1.5" role="group" aria-label={label}>
       {SCORES.map((s) => (
         <button
           key={s}
           type="button"
           onClick={() => onChange(s)}
+          aria-pressed={value === s}
+          aria-label={`${label}: ${s}`}
           className={cn(
             "flex h-7 w-7 items-center justify-center rounded-lg text-xs font-semibold",
             value === s ? "bg-[var(--brand)] text-[var(--brand-text)]" : "bg-[var(--surface2)] text-[var(--muted)]"
@@ -219,11 +221,19 @@ export function InterviewsClient({ data }: { data: InterviewsData }) {
           <div className="mb-3 grid grid-cols-1 gap-3.5 sm:grid-cols-2">
             <div>
               <div className="mb-1.5 text-xs text-[var(--muted)]">Difficulty</div>
-              <ScoreRow value={addForm.difficulty} onChange={(n) => setAddForm((f) => ({ ...f, difficulty: n }))} />
+              <ScoreRow
+                value={addForm.difficulty}
+                onChange={(n) => setAddForm((f) => ({ ...f, difficulty: n }))}
+                label="Difficulty"
+              />
             </div>
             <div>
               <div className="mb-1.5 text-xs text-[var(--muted)]">Performance</div>
-              <ScoreRow value={addForm.performance} onChange={(n) => setAddForm((f) => ({ ...f, performance: n }))} />
+              <ScoreRow
+                value={addForm.performance}
+                onChange={(n) => setAddForm((f) => ({ ...f, performance: n }))}
+                label="Performance"
+              />
             </div>
           </div>
 
@@ -350,13 +360,18 @@ export function InterviewsClient({ data }: { data: InterviewsData }) {
           <div className="mb-3 grid grid-cols-1 gap-3.5 sm:grid-cols-2">
             <div>
               <div className="mb-1.5 text-xs text-[var(--muted)]">Difficulty</div>
-              <ScoreRow value={editForm.difficulty} onChange={(n) => setEditForm((f) => f && { ...f, difficulty: n })} />
+              <ScoreRow
+                value={editForm.difficulty}
+                onChange={(n) => setEditForm((f) => f && { ...f, difficulty: n })}
+                label="Difficulty"
+              />
             </div>
             <div>
               <div className="mb-1.5 text-xs text-[var(--muted)]">Performance</div>
               <ScoreRow
                 value={editForm.performance}
                 onChange={(n) => setEditForm((f) => f && { ...f, performance: n })}
+                label="Performance"
               />
             </div>
           </div>

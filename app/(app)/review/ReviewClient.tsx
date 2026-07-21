@@ -111,11 +111,13 @@ export function ReviewClient({ data }: { data: ReviewData }) {
         />
         {error && <div className="mb-2.5 text-xs text-[var(--danger)]">{error}</div>}
         <div className="flex items-center justify-between">
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5" role="group" aria-label="Week rating">
             {RATINGS.map((r) => (
               <button
                 key={r}
                 onClick={() => setRating(r)}
+                aria-pressed={rating === r}
+                aria-label={`Week rating: ${r}`}
                 className={cn(
                   "flex h-7 w-7 items-center justify-center rounded-lg text-xs font-semibold",
                   rating === r ? "bg-[var(--brand)] text-[var(--brand-text)]" : "bg-[var(--surface2)] text-[var(--muted)]"

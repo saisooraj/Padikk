@@ -162,6 +162,7 @@ export function NotesClient({ data }: { data: NotesData }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search notes or tags…"
+            aria-label="Search notes or tags"
             className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[13px] text-[var(--text)] placeholder:text-[var(--muted)]"
           />
           <button
@@ -252,7 +253,8 @@ export function NotesClient({ data }: { data: NotesData }) {
               <input
                 value={titleDraft}
                 onChange={(e) => setTitleDraft(e.target.value)}
-                className="flex-1 bg-transparent text-[19px] font-bold text-[var(--text)] outline-none"
+                aria-label="Note title"
+                className="flex-1 rounded bg-transparent text-[19px] font-bold text-[var(--text)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]"
               />
               <div className="flex shrink-0 items-center gap-3">
                 <button
@@ -275,7 +277,8 @@ export function NotesClient({ data }: { data: NotesData }) {
                 value={tagsDraft}
                 onChange={(e) => setTagsDraft(e.target.value)}
                 placeholder="Tags, comma-separated"
-                className="min-w-[160px] flex-1 rounded-[5px] bg-[var(--surface2)] px-2 py-[3px] text-[11px] text-[var(--text)] outline-none placeholder:text-[var(--muted)]"
+                aria-label="Tags, comma-separated"
+                className="min-w-[160px] flex-1 rounded-[5px] bg-[var(--surface2)] px-2 py-[3px] text-[11px] text-[var(--text)] outline-none placeholder:text-[var(--muted)] focus-visible:ring-2 focus-visible:ring-[var(--brand)]"
               />
               <select
                 value={monthRefDraft}
@@ -297,7 +300,8 @@ export function NotesClient({ data }: { data: NotesData }) {
               value={contentDraft}
               onChange={(e) => setContentDraft(e.target.value)}
               placeholder="Write your note…"
-              className="min-h-[300px] w-full resize-y whitespace-pre-wrap bg-transparent text-sm leading-[1.75] text-[var(--text)] outline-none placeholder:text-[var(--muted)]"
+              aria-label="Note content"
+              className="min-h-[300px] w-full resize-y whitespace-pre-wrap rounded bg-transparent text-sm leading-[1.75] text-[var(--text)] outline-none placeholder:text-[var(--muted)] focus-visible:ring-2 focus-visible:ring-[var(--brand)]"
             />
             <div className="mt-3 flex justify-end">
               <button
