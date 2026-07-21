@@ -90,11 +90,61 @@ bump. Fix, in `app/globals.css`:
   this environment (same limitation as steps 19–21), so a real look at both themes is still worth a
   quick glance next time there's browser access.
 
-**What's left is genuinely open-ended, not a checklist**: Tiptap rich text for Notes (step 13
-explicitly scoped it out), a real `/dsa/[id]` or `/interviews/[id]` deep-linkable route if ever
-wanted, and swapping `DATABASE_URL` to a real cloud Postgres before any real deployment. None of
-these are "step N still pending" — they're possible future asks, listed here so a future session
-doesn't mistake this for unfinished plan work.
+**What's left is genuinely open-ended, not a checklist**: a real `/dsa/[id]` or `/interviews/[id]`
+deep-linkable route if ever wanted, and swapping `DATABASE_URL` to a real cloud Postgres before any
+real deployment. Neither is "step N still pending" — they're possible future asks, listed here so a
+future session doesn't mistake this for unfinished plan work.
+
+## Tiptap rich text for Notes (post-plan follow-up)
+
+Closed the gap step 13 explicitly scoped out — Notes now has a real rich-text editor instead of a
+plain textarea. `Note.content` was always typed `@db.Text // rich text JSON (Tiptap)` in the schema
+(the comment was there from the very first migration), so this was completing an already-designed
+data shape, not inventing one — and `@tiptap/react`/`@tiptap/starter-kit`/`@tiptap/pm` were already
+in `package.json` as unused dependencies from the initial scaffold.
+
+- `lib/tiptap-content.ts` — `emptyNoteDoc()`, `parseNoteContent(content)` (empty string → empty
+  doc, otherwise `JSON.parse`), `noteContentToPlainText(content)` (walks the doc tree flattening
+  text nodes, for the notes-list preview — previews must never show raw JSON), and
+  `isValidNoteContent(content)` (API-boundary check: empty string is valid, otherwise must parse to
+  `{ type: "doc", ... }`).
+- `components/ui/rich-text-editor.tsx` — new generic primitive (alongside `chip.tsx`/`switch.tsx`
+  etc.), not Notes-specific. **Deliberately uncontrolled**: takes `initialContent` (seeds `useEditor`
+  once) and an `onChange` fired only on real user edits via `onUpdate`; the caller remounts it via
+  `key` (`selected.id` for the detail panel, a static key for the add-form) when switching documents,
+  rather than a sync-effect that diffs JSON on every render — simpler and avoids a class of "is this
+  edit intentional or just React re-rendering" bugs. Toolbar is plain text labels (B/I/S/H2/H3/•
+  List/1. List/❝❞/`</>`) matching the app's established no-icon-library convention from the design
+  pivot, with `aria-pressed` reflecting `editor.isActive(...)` per button.
+- `app/globals.css` — added `.tiptap` content styles (headings/lists/blockquote/code/pre) using only
+  existing `var(--x)` tokens, no new colors; `--font-jetbrains-mono` for inline code, matching the
+  rest of the app's mono usage for data/labels.
+- `app/(app)/notes/NotesClient.tsx` — both the add-form and the detail-panel textareas are now
+  `RichTextEditor`. `contentDraft`/`addContent` stay `string` (the same JSON-string shape the DB
+  already returns) — only the editor boundary converts to/from `JSONContent`, so the existing
+  `JSON.stringify`-comparison dirty-gate on `contentDraft !== selected.content` needed no changes.
+  The notes-list preview now calls `noteContentToPlainText(note.content)` instead of rendering
+  `note.content` directly (which would otherwise dump raw JSON into the card).
+- **New validation on both `POST /api/notes` and `PATCH /api/notes/[id]`**: `content`, if provided,
+  must satisfy `isValidNoteContent` (400 if not) — this is the actual system boundary (an API route
+  accepting arbitrary request bodies), unlike `NotesClient` itself which always sends well-formed
+  JSON it just produced, so no parse-fallback was added inside the client or `noteContentToPlainText`
+  — trusting the API-enforced invariant rather than defending against a state that can't reach it.
+- **Verified end-to-end against the real DB** (confirmed `Note` was genuinely empty, 0 rows, before
+  starting — same table other sessions test against): unauthenticated signed in via a real
+  credentials POST to confirm the flow end-to-end; confirmed non-JSON and JSON-but-not-a-doc
+  `content` bodies 400 on both `POST` and `PATCH`; created a real note with a valid Tiptap doc
+  (paragraph text) and confirmed `/notes`'s rendered HTML shows the plain-text preview with **no**
+  raw JSON leaking through; `PATCH`ed in a heading + nested bullet-list/list-item/paragraph structure
+  and confirmed the flattened preview text updated correctly across all three nesting levels; deleted
+  the test note and confirmed the table returned to the "No notes yet" empty state, 0 rows.
+- `npm run build`/`tsc --noEmit` both clean; `/notes`'s First Load JS grew from ~4kB to ~127kB
+  (Tiptap's real cost) — expected, not a regression to chase down.
+- **No browser available in this environment** (same limitation as steps 19–21) — contenteditable
+  behavior, cursor stability across re-renders, and the toolbar's actual click-to-format UX were not
+  visually exercised, only verified via the rendered HTML/API responses above. Worth a real
+  browser pass (type a mix of formatting, switch between notes, reload) next time there's browser
+  access.
 
 ## Accessibility pass (step 21)
 

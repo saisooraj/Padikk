@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { isValidNoteContent } from "@/lib/tiptap-content";
 
 type PatchBody = {
   title?: string;
@@ -31,7 +32,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
     data.title = body.title.trim();
   }
-  if (body.content !== undefined) data.content = body.content;
+  if (body.content !== undefined) {
+    if (!isValidNoteContent(body.content)) {
+      return NextResponse.json({ error: "content must be a Tiptap JSON doc" }, { status: 400 });
+    }
+    data.content = body.content;
+  }
   if (body.tags !== undefined) data.tags = body.tags;
   if (body.monthRef !== undefined) data.monthRef = body.monthRef;
   if (body.pinned !== undefined) data.pinned = body.pinned;

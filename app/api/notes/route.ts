@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { isValidNoteContent } from "@/lib/tiptap-content";
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -20,12 +21,15 @@ export async function POST(req: Request) {
   if (!title?.trim()) {
     return NextResponse.json({ error: "title is required" }, { status: 400 });
   }
+  if (content !== undefined && !isValidNoteContent(content)) {
+    return NextResponse.json({ error: "content must be a Tiptap JSON doc" }, { status: 400 });
+  }
 
   const note = await prisma.note.create({
     data: {
       userId: session.user.id,
       title: title.trim(),
-      content: content?.trim() || "",
+      content: content ?? "",
       tags: tags ?? [],
       monthRef: typeof monthRef === "number" ? monthRef : null,
     },

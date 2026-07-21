@@ -7,6 +7,8 @@ import { formatDistanceToNow } from "date-fns";
 import { usePageHeader } from "@/lib/use-page-header";
 import { MONTHS } from "@/lib/curriculum-data";
 import { cn } from "@/lib/utils";
+import { noteContentToPlainText, parseNoteContent } from "@/lib/tiptap-content";
+import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import type { NotesData } from "@/lib/queries/notes";
 
 export function NotesClient({ data }: { data: NotesData }) {
@@ -181,12 +183,16 @@ export function NotesClient({ data }: { data: NotesData }) {
               placeholder="Title"
               className="rounded-lg border border-[var(--border)] bg-[var(--surface2)] px-3 py-2 text-[13px] text-[var(--text)] placeholder:text-[var(--muted)]"
             />
-            <textarea
-              value={addContent}
-              onChange={(e) => setAddContent(e.target.value)}
-              placeholder="Write your note…"
-              className="min-h-[90px] resize-y rounded-lg border border-[var(--border)] bg-[var(--surface2)] px-3 py-2 text-[13px] text-[var(--text)] placeholder:text-[var(--muted)]"
-            />
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--surface2)] px-3 py-2">
+              <RichTextEditor
+                key="add-note"
+                initialContent={parseNoteContent(addContent)}
+                onChange={(json) => setAddContent(JSON.stringify(json))}
+                ariaLabel="Note content"
+                placeholder="Write your note…"
+                minHeightClassName="min-h-[90px]"
+              />
+            </div>
             <input
               value={addTags}
               onChange={(e) => setAddTags(e.target.value)}
@@ -219,7 +225,7 @@ export function NotesClient({ data }: { data: NotesData }) {
                 {note.title}
               </div>
               <div className="mb-1.5 line-clamp-2 text-[11.5px] text-[var(--muted)]">
-                {note.content || "No content yet."}
+                {noteContentToPlainText(note.content) || "No content yet."}
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {note.tags.map((tag) => (
@@ -296,12 +302,12 @@ export function NotesClient({ data }: { data: NotesData }) {
                 Updated {formatDistanceToNow(selected.updatedAt, { addSuffix: true })}
               </span>
             </div>
-            <textarea
-              value={contentDraft}
-              onChange={(e) => setContentDraft(e.target.value)}
+            <RichTextEditor
+              key={selected.id}
+              initialContent={parseNoteContent(selected.content)}
+              onChange={(json) => setContentDraft(JSON.stringify(json))}
+              ariaLabel="Note content"
               placeholder="Write your note…"
-              aria-label="Note content"
-              className="min-h-[300px] w-full resize-y whitespace-pre-wrap rounded bg-transparent text-sm leading-[1.75] text-[var(--text)] outline-none placeholder:text-[var(--muted)] focus-visible:ring-2 focus-visible:ring-[var(--brand)]"
             />
             <div className="mt-3 flex justify-end">
               <button
