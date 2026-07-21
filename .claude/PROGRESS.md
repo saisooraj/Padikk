@@ -50,20 +50,62 @@ This changed:
 | 15 | `/interviews` log | ✅ Visual shell done, static data |
 | 16 | `/review` weekly form | ✅ Visual shell done, static data |
 | 17 | `/settings` | ✅ Visual shell done, static data |
-| 18 | Wire all API routes (`app/api/**`) | 🟡 Dashboard + Today + Roadmap + DSA + Projects + Notes + Stats wired; 3 pages left |
+| 18 | Wire all API routes (`app/api/**`) | 🟡 Dashboard + Today + Roadmap + DSA + Projects + Notes + Stats + Interviews wired; 2 pages left |
 | 19 | Loading states, error boundaries, empty states | 🟡 Empty states done per-page; no loading.tsx/error.tsx yet |
 | 20 | Responsive mobile layout per page | 🟡 Shell + grids are responsive; not device-tested |
 | 21 | Dark mode polish, accessibility pass | 🟡 Both themes render correctly; no accessibility pass yet |
 
-**Dashboard, Today, Roadmap, DSA, Projects, Notes, and Stats are now wired; the other 3 pages are
-still static/client-state shells** — auth gates them, but no Prisma queries or API routes are
-wired in for those yet. This was a deliberate scope choice for the design pivot: get the whole app
-visually right first, wire data in one page at a time afterward. See "Static shell data sources"
-below for exactly what's real vs. placeholder per remaining page.
+**Dashboard, Today, Roadmap, DSA, Projects, Notes, Stats, and Interviews are now wired; `/review`
+and `/settings` are still static/client-state shells** — auth gates them, but no Prisma queries or
+API routes are wired in for those yet. This was a deliberate scope choice for the design pivot: get
+the whole app visually right first, wire data in one page at a time afterward. See "Static shell
+data sources" below for exactly what's real vs. placeholder per remaining page.
 
-**Next up: continue step 18 with `/interviews`**, then `/review`, `/settings`.
-Building one page per session/turn now, going in that order — see "Session-closing checklist"
-below, keep doing this rather than batching multiple pages into one pass.
+**Next up: continue step 18 with `/review`**, then `/settings`. This session moved off the earlier
+one-page-per-session-turn cadence — the user asked to work through everything remaining in this
+plan (steps 18–21) in one continuous pass instead, still with the same rigor (real-DB verification,
+one commit per page/phase). If a future session picks this up mid-way, check the table above for
+what's actually done rather than assuming step 18 is still page-by-page.
+
+## Interviews wiring (step 18, eighth page)
+
+Followed the DSA/Projects/Notes pattern — `MockInterview` is user-created with no seed data, full
+CRUD, no separate `/interviews/[id]` route (inline detail/edit panel instead, same "no drawer
+component in this codebase" reasoning as DSA/Projects):
+
+- `lib/queries/interviews.ts` — `getInterviewsData(userId)`: all of this user's `MockInterview`
+  rows, `orderBy: date desc`.
+- **New API routes**, both under `auth()` guard:
+  - `POST /api/interviews` — creates an interview (`date`/`platform`/`type`/`difficulty`/
+    `performance` required; `type` validated against `INTERVIEW_TYPE_LABEL`'s keys from
+    `lib/interviews-data.ts`, difficulty/performance validated as integers 1–5; `company`/`topics`/
+    `feedback`/`improvements` optional). Returns `{ interview }`.
+  - `PATCH /api/interviews/[id]` — flat field patch (same shape as Notes/Projects, not DSA's
+    action-based one — no state-machine transitions here, every field is independently editable).
+    Ownership check (`findFirst({ id, userId })`, 404 if missing) before any write.
+  - `DELETE /api/interviews/[id]` — same ownership check, then deletes.
+- `app/(app)/interviews/InterviewsClient.tsx` — same table layout as the old static shell, plus: an
+  inline "+ Log interview" form and an inline detail/edit panel (opened by clicking a row) with the
+  same field set, both using a small local `ScoreRow` component (1–5 button row) for
+  difficulty/performance — mirrors the exact 1–5 button pattern the (still-unwired, at the time)
+  `/review` page's rating selector already used, not a new star-rating widget (none exists in this
+  codebase). Detail panel is dirty-gated (`JSON.stringify` comparison against the row's current
+  values, same technique Notes uses) before enabling Save.
+- `platform` is a free-text DB column (not an enum) but the UI offers it as a `<select>` seeded with
+  the 4 spec values (Pramp / interviewing.io / Peer / Self) for both add and edit — matches the
+  spec's form field list without adding an enum to the schema.
+- `lib/interviews-data.ts`'s `INTERVIEWS` array/`InterviewEntry` type are now dead code (Interviews
+  was their last caller) — left in place, same treatment as other superseded placeholder exports.
+  `INTERVIEW_TYPE_LABEL`/`InterviewType` are still used post-wiring (real enum/label source).
+- **Verified end-to-end against the real DB**: confirmed `MockInterview` was genuinely empty (0
+  rows) before starting; confirmed unauthenticated `POST`/`PATCH`/`DELETE` all 401 (and a trailing-
+  slash `DELETE` with no id 308-redirects to the collection route rather than 404ing — not a bug,
+  just Next's route-matching, worth remembering if a future curl test omits the id); confirmed
+  missing-field and invalid-`type`/out-of-range-score `POST`/`PATCH` bodies 400; created a real
+  interview via `POST` and confirmed it rendered on `/interviews`; `PATCH`ed `performance`/
+  `feedback` and confirmed the edit rendered; confirmed a nonexistent id 404s on both `PATCH` and
+  `DELETE`; deleted the interview and confirmed the table returned to the "No mock interviews
+  logged yet" empty state with 0 rows.
 
 ## Stats wiring (step 18, seventh page)
 
