@@ -50,23 +50,53 @@ This changed:
 | 15 | `/interviews` log | ✅ Visual shell done, static data |
 | 16 | `/review` weekly form | ✅ Visual shell done, static data |
 | 17 | `/settings` | ✅ Visual shell done, static data |
-| 18 | Wire all API routes (`app/api/**`) | 🟡 Dashboard + Today + Roadmap + DSA + Projects + Notes + Stats + Interviews + Review wired; 1 page left |
+| 18 | Wire all API routes (`app/api/**`) | ✅ All 10 pages wired to real Prisma queries |
 | 19 | Loading states, error boundaries, empty states | 🟡 Empty states done per-page; no loading.tsx/error.tsx yet |
 | 20 | Responsive mobile layout per page | 🟡 Shell + grids are responsive; not device-tested |
 | 21 | Dark mode polish, accessibility pass | 🟡 Both themes render correctly; no accessibility pass yet |
 
-**Dashboard, Today, Roadmap, DSA, Projects, Notes, Stats, Interviews, and Review are now wired;
-`/settings` is the last static/client-state shell** — auth gates it, but no Prisma queries or API
-routes are wired in yet. This was a deliberate scope choice for the design pivot: get the whole app
-visually right first, wire data in one page at a time afterward. See "Static shell data sources"
-below for exactly what's real vs. placeholder per remaining page.
+**Step 18 is done — all 10 pages are wired to real Prisma queries.** No more static/client-state
+shells or illustrative placeholder catalogs feeding any page's primary data (see "Static shell data
+sources" below, which is now fully superseded — kept temporarily for the historical philosophy
+notes, safe to delete once steps 19–21 are done too).
 
-**Next up: finish step 18 with `/settings`**, then steps 19–21 (loading/error states, mobile
-responsiveness, accessibility). This session moved off the earlier one-page-per-session-turn
-cadence — the user asked to work through everything remaining in this plan in one continuous pass
-instead, still with the same rigor (real-DB verification, one commit per page/phase). If a future
-session picks this up mid-way, check the table above for what's actually done rather than assuming
-step 18 is still page-by-page.
+**Next up: steps 19–21** (loading/error states, mobile responsiveness, accessibility pass). This
+session moved off the earlier one-page-per-session-turn cadence — the user asked to work through
+everything remaining in this plan in one continuous pass instead, still with the same rigor
+(real-DB verification, one commit per page/phase).
+
+## Settings wiring (step 18, tenth and final page)
+
+Simplest wiring pass of step 18 — `UserSettings` is a 1-row-per-user resource already lazily
+created by `getOrCreateUserSettings` (from the Dashboard session), so this page only needed to read
+and PATCH that one row, no create/delete:
+
+- `lib/queries/settings.ts` — `getSettingsData(userId)`: thin wrapper reusing
+  `getOrCreateUserSettings` from `lib/queries/dashboard.ts` rather than duplicating the upsert
+  logic.
+- **New API route**, `PATCH /api/settings` (no `[id]` segment — `UserSettings` is keyed by `userId`
+  directly, a singleton per user, unlike DSA/Notes/Interviews' id-addressed resources). Validates
+  `currentMonth` (1–12), `dailyGoalMinutes` (30–180), non-empty `timezone`, `startDate` parses to a
+  valid date; all fields are independently optional (flat patch, only provided keys are written).
+  Uses `prisma.userSettings.upsert` (not a plain `update`) for defensive robustness even though the
+  row should always already exist by the time Settings loads.
+- `app/(app)/settings/SettingsClient.tsx` — same three-section layout as the old static shell
+  (Account/Roadmap-config/Preferences), now dirty-gated like Notes/Interviews (`JSON.stringify`
+  comparison against the loaded values) before enabling Save. Added `<label htmlFor>` on every
+  input (the old shell only had placeholder-less bare inputs with no associated label) — a small
+  head start on the step 21 accessibility pass, not a scope change.
+  `reminderTime` is only sent (and only rendered as an input) when `reminderEnabled` is true; saving
+  with the toggle off sends `reminderTime: null` explicitly rather than leaving a stale time behind.
+- The Account card (session email/name + sign out) is untouched — it was already using real
+  `next-auth/react` session data, no Prisma involved.
+- **Verified end-to-end against the real DB**: read the pre-existing real `UserSettings` row first
+  (`dailyGoalMinutes: 90, currentMonth: 1, timezone: Asia/Kolkata, reminderEnabled: false` — genuine
+  values from prior real usage, not test data) and confirmed the form loaded them exactly with Save
+  correctly disabled (not dirty); confirmed unauthenticated `/settings` 302s and `PATCH` 401s;
+  confirmed out-of-range `currentMonth`/`dailyGoalMinutes` 400s; PATCHed real changes (month 2, 120
+  min goal, new timezone, reminder on at 08:30) and confirmed the same row `id` was updated in place
+  (not duplicated) and the page re-rendered every changed field correctly; PATCHed the exact original
+  values back and confirmed the DB row is byte-for-byte what it was before this session touched it.
 
 ## Review wiring (step 18, ninth page)
 
@@ -511,30 +541,25 @@ provider was dropped entirely (not stubbed) — no `GOOGLE_CLIENT_ID`/`SECRET` a
   session cookie set, `/dashboard` → 200; wrong password → `CredentialsSignin` error, still
   redirected.
 
-## Static shell data sources (important for the next session)
+## Static shell data sources (historical — all 10 pages are wired now, see below)
 
-Two different philosophies were used, both deliberate — don't try to make them consistent with
-each other, they're answering different questions:
+**Superseded as of the Settings wiring** — every page now reads real Prisma data and shows honest
+empty/zero states (0 days active, "no activity yet", months `NOT_STARTED` at 0%, "No problems
+tracked yet", all 12 projects `NOT_STARTED`, "No notes yet", "No mock interviews logged yet", "No
+reviews submitted yet", etc.) rather than fabricated history. Kept this section for the placeholder-
+file bookkeeping below, which is still accurate:
 
-- **Dashboard, Today, Roadmap, DSA, Projects, Notes & Stats** are wired to real Prisma queries now
-  (see the wiring sections above) and show *honest empty/zero states* (0 days active, "no activity
-  yet", months `NOT_STARTED` at 0%, "No problems tracked yet", all 12 projects `NOT_STARTED`, "No
-  notes yet", "0h"/"0/0"/"No mock interviews logged yet" on Stats, etc.) rather than fabricated
-  history — these pages are about *this user's* real progress, and a fresh account genuinely has
-  none yet. `lib/notes-data.ts`'s `NOTES` array, `lib/dsa-data.ts`'s `DSA_PROBLEMS`/
-  `difficultyDistribution()`, and `lib/stats-data.ts`'s `buildHeatmapWeeks`/`hoursByTypeRows`/
-  `HOURS_BY_TYPE` are now dead code post-wiring (nothing imports them) — left in place rather than
-  deleted, since Interviews/Weekly Review's placeholder files are still load-bearing and it's cheap
-  to leave a few unused exports rather than risk deleting something still referenced; safe to
-  remove in a later cleanup pass. `lib/dsa-data.ts`'s `DSA_PATTERNS`/`PATTERN_LABEL` and
-  `lib/stats-data.ts`'s `HEATMAP_LEVEL_OPACITY` **are** still used post-wiring — real enum/label/
-  presentation constants, not fabricated data, same distinction as before.
-- **Interviews, Weekly Review** still show *illustrative sample catalogs* (`lib/interviews-data.ts`,
-  `lib/weekly-review-data.ts`) — these are catalog/list-management pages whose entire visual purpose
-  (table density, badge variety) is unreadable when empty, and their underlying Prisma models are
-  user-created with no seed data anyway.
-- All placeholder-data files use the real Prisma enum values/casing (e.g. `"NEEDS_REVIEW"`, not
-  the mockup's `"needs review"`) for the same reason.
+- `lib/{dsa,notes,interviews,stats,weekly-review}-data.ts`'s illustrative catalogs
+  (`DSA_PROBLEMS`/`difficultyDistribution()`, `NOTES`, `INTERVIEWS`, `buildHeatmapWeeks`/
+  `hoursByTypeRows`/`HOURS_BY_TYPE`, `WEEKLY_REVIEWS`) are all dead code now (nothing imports them)
+  — left in place rather than deleted across every wiring session, cheap to leave unused exports
+  rather than risk deleting something still referenced; safe to remove in a dedicated cleanup pass.
+- `lib/dsa-data.ts`'s `DSA_PATTERNS`/`PATTERN_LABEL`, `lib/interviews-data.ts`'s
+  `INTERVIEW_TYPE_LABEL`/`InterviewType`, and `lib/stats-data.ts`'s `HEATMAP_LEVEL_OPACITY` **are**
+  still used post-wiring — real enum/label/presentation constants, not fabricated data, kept
+  deliberately distinct from the dead illustrative arrays above.
+- All placeholder-data files used the real Prisma enum values/casing (e.g. `"NEEDS_REVIEW"`, not
+  a mockup's `"needs review"`) even while still illustrative, for the same reason.
 
 ## Key decisions & gotchas (don't relitigate these)
 
@@ -588,15 +613,22 @@ each other, they're answering different questions:
 
 - `prisma/schema.prisma` — full data model (curriculum + user tracking + NextAuth tables)
 - `prisma/seed.ts` — 6 phases, 12 months, 86 topics, 140 tasks, 36 resources, 12 projects
-- `lib/curriculum-data.ts` — static mirror of `prisma/seed.ts` for pages to render pre-wiring
-- `lib/{dsa,notes,interviews,weekly-review,stats}-data.ts` — illustrative placeholder catalogs
-  for the pages whose Prisma models are user-created (no seed data exists for these)
+- `lib/curriculum-data.ts` — static mirror of `prisma/seed.ts`, still used at runtime (Roadmap's
+  `MONTHS`, Notes' `monthRef` select, etc.), not just a pre-wiring artifact
+- `lib/{dsa,notes,interviews,weekly-review,stats}-data.ts` — former illustrative placeholder
+  catalogs; now dead code except the enum/label/presentation constants noted in "Static shell data
+  sources" above (`DSA_PATTERNS`/`PATTERN_LABEL`, `INTERVIEW_TYPE_LABEL`/`InterviewType`,
+  `HEATMAP_LEVEL_OPACITY`)
+- `lib/queries/*.ts` — one query module per page (`dashboard`, `today`, `roadmap`, `dsa`,
+  `projects`, `notes`, `stats`, `interviews`, `review`, `settings`), each exporting a single
+  `get*Data(userId)` the page's Server Component calls
 - `lib/status-colors.ts` — difficulty/status/score → CSS var() color helpers
 - `lib/store/{theme,page-header}.ts` — theme toggle (persisted) and page header title/subtitle
 - `components/layout/{Sidebar,PageShell,TopBar,MobileNav}.tsx` — app shell (rebuilt for the pivot)
 - `components/ui/` — hand-written shadcn-style primitives (button, card, badge, avatar, switch,
   progress-bar, chip)
-- `app/(app)/` — authenticated route group; all 10 pages exist as static/client-state shells
+- `app/(app)/` — authenticated route group; all 10 pages are Server Component `page.tsx` + Client
+  Component `*Client.tsx` pairs, wired to real Prisma data (step 18 complete)
 - `app/globals.css` + `tailwind.config.ts` — OKLCH design tokens (dark + light)
 
 ## Session-closing checklist
