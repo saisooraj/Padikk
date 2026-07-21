@@ -51,7 +51,7 @@ This changed:
 | 16 | `/review` weekly form | ✅ Visual shell done, static data |
 | 17 | `/settings` | ✅ Visual shell done, static data |
 | 18 | Wire all API routes (`app/api/**`) | ✅ All 10 pages wired to real Prisma queries |
-| 19 | Loading states, error boundaries, empty states | 🟡 Empty states done per-page; no loading.tsx/error.tsx yet |
+| 19 | Loading states, error boundaries, empty states | ✅ Done — shared `loading.tsx`/`error.tsx`, empty states already done per-page |
 | 20 | Responsive mobile layout per page | 🟡 Shell + grids are responsive; not device-tested |
 | 21 | Dark mode polish, accessibility pass | 🟡 Both themes render correctly; no accessibility pass yet |
 
@@ -60,10 +60,42 @@ shells or illustrative placeholder catalogs feeding any page's primary data (see
 sources" below, which is now fully superseded — kept temporarily for the historical philosophy
 notes, safe to delete once steps 19–21 are done too).
 
-**Next up: steps 19–21** (loading/error states, mobile responsiveness, accessibility pass). This
-session moved off the earlier one-page-per-session-turn cadence — the user asked to work through
-everything remaining in this plan in one continuous pass instead, still with the same rigor
-(real-DB verification, one commit per page/phase).
+**Next up: steps 20–21** (mobile responsiveness, accessibility pass). This session moved off the
+earlier one-page-per-session-turn cadence — the user asked to work through everything remaining in
+this plan in one continuous pass instead, still with the same rigor (real-DB verification, one
+commit per page/phase).
+
+## Loading states & error boundaries (step 19)
+
+Shared across all 10 `(app)` pages rather than one `loading.tsx`/`error.tsx` per route — Next's App
+Router convention is that the nearest boundary up the tree applies to every page below it that
+doesn't define its own, so one pair at `app/(app)/` covers all 10 without near-duplicate files:
+
+- `app/(app)/loading.tsx` — generic pulsing skeleton (stat-tile row + two large blocks), renders
+  inside `PageShell`'s `<main>` (Sidebar/TopBar stay visible, only the content area shows the
+  skeleton) since `loading.tsx` nests inside the segment's own `layout.tsx`, not above it.
+- `app/(app)/error.tsx` — client component error boundary (required by Next — must be `"use client"`
+  with `{ error, reset }` props), same "Sidebar/TopBar stay mounted" placement. "Try again" calls
+  `reset()`; "Back to dashboard" is a plain link out.
+- `app/error.tsx` — root-level fallback for anything error.tsx-uncovered above the `(app)` group
+  (e.g. `/signin`, the `/` redirect page). Cannot rely on `PageShell`/Sidebar (may not have mounted),
+  so it's a standalone centered message instead.
+- Deliberately did **not** catch errors thrown inside `app/(app)/layout.tsx` itself (`PageShell`) —
+  Next's rule is an `error.tsx` can't catch errors from its own parent layout in the same segment;
+  only `app/error.tsx` above it can. Not worth restructuring `PageShell` to avoid this for an app
+  this size.
+- **Verified real behavior, not just that the files exist**: temporarily added a 2.5s delay to
+  `getDashboardData` and confirmed via `curl -N` that the streamed response actually contains the
+  `loading.tsx` skeleton markup (`animate-pulse` blocks) before the real content — Next's streaming
+  SSR sends the fallback first, then swaps it client-side, so this is visible in the raw HTTP
+  response even without a browser. Temporarily made `getSettingsData` throw and confirmed
+  `app/(app)/error.js` is registered for that route and the thrown error's message/digest/stack
+  correctly stream through the RSC payload for the client error boundary to pick up — **couldn't
+  visually confirm the final rendered "Something went wrong." UI itself**, since that only renders
+  after client-side hydration executes the error boundary's fallback, and no headless browser is
+  available in this environment (checked: no Playwright/Puppeteer installed). Both temporary
+  changes were fully reverted (`git diff` confirmed clean) before moving on. If a future session
+  has real browser access, worth a quick visual sanity check of both.
 
 ## Settings wiring (step 18, tenth and final page)
 
