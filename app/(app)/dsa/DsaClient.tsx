@@ -26,7 +26,7 @@ function reviewDateLabel(reviewInDays: number | null) {
   return format(addDays(new Date(), reviewInDays), "MMM d");
 }
 
-export function DsaClient({ data }: { data: DsaData }) {
+export function DsaClient({ data, initialSelectedId }: { data: DsaData; initialSelectedId?: string }) {
   usePageHeader("DSA Tracker", `${data.stats.total} problem${data.stats.total === 1 ? "" : "s"} tracked`);
   const router = useRouter();
 
@@ -34,8 +34,10 @@ export function DsaClient({ data }: { data: DsaData }) {
   const [pattern, setPattern] = useState<DSAPattern | "all">("all");
   const [difficulty, setDifficulty] = useState<Difficulty | "all">("all");
   const [status, setStatus] = useState<ProblemStatus | "all">("all");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+
+  const selectProblem = (id: string | null) =>
+    router.push(id ? `/dsa/${id}` : "/dsa", { scroll: false });
 
   const [addOpen, setAddOpen] = useState(false);
   const [addTitle, setAddTitle] = useState("");
@@ -56,7 +58,7 @@ export function DsaClient({ data }: { data: DsaData }) {
       (!search || p.title.toLowerCase().includes(search.toLowerCase()))
   );
 
-  const selected = selectedId ? data.problems.find((p) => p.id === selectedId) ?? null : null;
+  const selected = initialSelectedId ? data.problems.find((p) => p.id === initialSelectedId) ?? null : null;
 
   useEffect(() => {
     setNotesDraft(selected?.notes ?? "");
@@ -111,7 +113,7 @@ export function DsaClient({ data }: { data: DsaData }) {
   const deleteProblem = async (id: string) => {
     if (!confirm("Delete this problem? This can't be undone.")) return;
     await withPending(id, () => fetch(`/api/dsa/${id}`, { method: "DELETE" }));
-    setSelectedId(null);
+    selectProblem(null);
   };
 
   const addProblem = async () => {
@@ -280,7 +282,7 @@ export function DsaClient({ data }: { data: DsaData }) {
           {filtered.map((p) => (
             <button
               key={p.id}
-              onClick={() => setSelectedId(p.id)}
+              onClick={() => selectProblem(p.id)}
               className="grid w-full grid-cols-[2fr_0.8fr_1fr] items-center border-b border-[var(--border)] px-4 py-[11px] text-left text-[13px] last:border-b-0 hover:bg-[var(--surface2)] sm:grid-cols-[2.2fr_1.3fr_0.8fr_1fr_0.7fr_0.8fr_1fr]"
             >
               <div className="truncate pr-2 text-[var(--text)]">{p.title}</div>
@@ -337,7 +339,7 @@ export function DsaClient({ data }: { data: DsaData }) {
           <Card className="mt-4 p-5">
             <div className="mb-2.5 flex items-center justify-between">
               <div className="text-[15px] font-bold text-[var(--text)]">{selected.title}</div>
-              <button onClick={() => setSelectedId(null)} className="text-xs text-[var(--muted)]">
+              <button onClick={() => selectProblem(null)} className="text-xs text-[var(--muted)]">
                 Close ✕
               </button>
             </div>
@@ -448,7 +450,7 @@ export function DsaClient({ data }: { data: DsaData }) {
                 key={p.id}
                 className="flex items-center justify-between border-b border-[var(--border)] py-2 text-[12.5px] last:border-b-0"
               >
-                <button className="text-left text-[var(--text)]" onClick={() => setSelectedId(p.id)}>
+                <button className="text-left text-[var(--text)]" onClick={() => selectProblem(p.id)}>
                   {p.title}
                 </button>
                 <button

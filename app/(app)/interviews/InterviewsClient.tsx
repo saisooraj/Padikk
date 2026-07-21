@@ -77,11 +77,13 @@ function ScoreRow({ value, onChange, label }: { value: number; onChange: (n: num
   );
 }
 
-export function InterviewsClient({ data }: { data: InterviewsData }) {
+export function InterviewsClient({ data, initialSelectedId }: { data: InterviewsData; initialSelectedId?: string }) {
   usePageHeader("Interviews", "Mock interview log");
   const router = useRouter();
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectInterview = (id: string | null) =>
+    router.push(id ? `/interviews/${id}` : "/interviews", { scroll: false });
+
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState<FormState>(emptyForm());
   const [addSaving, setAddSaving] = useState(false);
@@ -91,7 +93,7 @@ export function InterviewsClient({ data }: { data: InterviewsData }) {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  const selected = selectedId ? data.interviews.find((iv) => iv.id === selectedId) ?? null : null;
+  const selected = initialSelectedId ? data.interviews.find((iv) => iv.id === initialSelectedId) ?? null : null;
 
   useEffect(() => {
     setEditForm(selected ? formFromRow(selected) : null);
@@ -163,7 +165,7 @@ export function InterviewsClient({ data }: { data: InterviewsData }) {
     if (!confirm("Delete this interview log? This can't be undone.")) return;
     const res = await fetch(`/api/interviews/${selected.id}`, { method: "DELETE" });
     if (res.ok) {
-      setSelectedId(null);
+      selectInterview(null);
       router.refresh();
     }
   };
@@ -278,7 +280,7 @@ export function InterviewsClient({ data }: { data: InterviewsData }) {
         {data.interviews.map((iv) => (
           <button
             key={iv.id}
-            onClick={() => setSelectedId(iv.id)}
+            onClick={() => selectInterview(iv.id)}
             className="w-full border-b border-[var(--border)] px-4 py-[13px] text-left last:border-b-0 hover:bg-[var(--surface2)]"
           >
             <div className="grid grid-cols-[0.9fr_1.2fr_0.8fr] items-center text-[13px] sm:grid-cols-[0.9fr_1fr_1.3fr_1.2fr_0.8fr_0.8fr]">
@@ -315,7 +317,7 @@ export function InterviewsClient({ data }: { data: InterviewsData }) {
             <div className="text-[15px] font-bold text-[var(--text)]">
               {selected.platform} · {format(selected.date, "MMM d, yyyy")}
             </div>
-            <button onClick={() => setSelectedId(null)} className="text-xs text-[var(--muted)]">
+            <button onClick={() => selectInterview(null)} className="text-xs text-[var(--muted)]">
               Close ✕
             </button>
           </div>

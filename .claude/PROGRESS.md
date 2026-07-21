@@ -90,10 +90,9 @@ bump. Fix, in `app/globals.css`:
   this environment (same limitation as steps 19–21), so a real look at both themes is still worth a
   quick glance next time there's browser access.
 
-**What's left is genuinely open-ended, not a checklist**: a real `/dsa/[id]` or `/interviews/[id]`
-deep-linkable route if ever wanted, and swapping `DATABASE_URL` to a real cloud Postgres before any
-real deployment. Neither is "step N still pending" — they're possible future asks, listed here so a
-future session doesn't mistake this for unfinished plan work.
+**What's left is genuinely open-ended, not a checklist**: swapping `DATABASE_URL` to a real cloud
+Postgres before any real deployment. Not "step N still pending" — a possible future ask, listed here
+so a future session doesn't mistake this for unfinished plan work.
 
 ## Tiptap rich text for Notes (post-plan follow-up)
 
@@ -145,6 +144,49 @@ in `package.json` as unused dependencies from the initial scaffold.
   visually exercised, only verified via the rendered HTML/API responses above. Worth a real
   browser pass (type a mix of formatting, switch between notes, reload) next time there's browser
   access.
+
+## Deep-linkable /dsa/[id] and /interviews/[id] (post-plan follow-up)
+
+Both pages already had the full two-pane list/detail UI (`DsaClient`/`InterviewsClient`, inline
+detail panel below/beside the table) — this didn't rebuild that UI, it just made the selection
+addressable by URL instead of only local component state.
+
+- **The URL is now the single source of truth for which row is "selected"**, not `useState`. Both
+  client components gained an optional `initialSelectedId` prop (undefined on the plain `/dsa` /
+  `/interviews` list route); `selected` is derived straight from it (`data.problems.find(p => p.id
+  === initialSelectedId)`) rather than from local state. Selecting a row, closing the detail panel,
+  or deleting the selected item all now call `router.push` (`/dsa/${id}` / `/dsa`, `{ scroll: false
+  }` so the list doesn't jump) instead of `setSelectedId`. Removed the `selectedId` state entirely —
+  there's nothing left for it to get out of sync with.
+- **New routes**: `app/(app)/dsa/[id]/page.tsx` and `app/(app)/interviews/[id]/page.tsx`. Each
+  re-fetches the same full list the plain list page does (`getDsaData`/`getInterviewsData`, already
+  scoped to `userId`), checks the id is actually in that user's list, and calls `notFound()` if not —
+  this both 404s a genuinely-missing id and 404s (rather than leaking a 403 or someone else's data)
+  an id that belongs to a different user, since a cross-user id will never appear in this user's
+  query result either way.
+- **No new API routes or query functions** — reused `getDsaData`/`getInterviewsData` as-is rather
+  than adding a `getProblemById`/`getInterviewById`, since the detail panel UI already needs the full
+  list alongside it (pattern mastery sidebar, due-for-review list, the interviews table itself) and
+  fetching a single row separately would mean two queries instead of one.
+- **Known limitation, verified, not a bug in this change**: `notFound()` on a bad id renders the
+  correct "This page could not be found" body (confirmed via curl) but the HTTP status line is 200,
+  not 404 — verified this is **not** dev-mode-only by testing against a real `next build && next
+  start` server too, and confirmed a route with genuinely no matching `page.tsx` at all *does* return
+  a real 404 on the same server, isolating the cause to routes that resolve to a real segment but
+  call `notFound()` from inside it. Root cause: `app/(app)/loading.tsx`'s Suspense boundary (added in
+  step 19) forces Next to flush the outer shell at 200 before the inner segment has resolved whether
+  it's going to 404 — the exact same streaming tradeoff already flagged for `error.tsx` in the step 19
+  notes ("couldn't visually confirm the final rendered UI... only renders after client-side
+  hydration"). Not fixing it here — restructuring the shared loading boundary to avoid eager-flushing
+  is a bigger, unrelated architectural change than "add a deep link," and the actual rendered page
+  (post-hydration, in a real browser) is correct either way.
+- **Verified end-to-end against the real DB**: confirmed unauthenticated `/dsa/[id]` and
+  `/interviews/[id]` both redirect (302, via middleware, same as the list pages); confirmed a
+  nonexistent id 404-content (see above) on both, in both dev and a real production build; created a
+  real `DSAProblem` and a real `MockInterview` via `POST`, confirmed their deep links (`/dsa/<id>`,
+  `/interviews/<id>`) return 200 with the right content (`Two Sum`, `Pramp`) actually rendered in the
+  HTML; deleted both test rows and confirmed `DSAProblem`/`MockInterview` counts returned to 0.
+  `npm run build`/`tsc --noEmit` both clean.
 
 ## Accessibility pass (step 21)
 
