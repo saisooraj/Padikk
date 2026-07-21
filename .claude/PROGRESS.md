@@ -62,20 +62,39 @@ pass). This session moved off the earlier one-page-per-session-turn cadence — 
 work through everything remaining in the plan (steps 18–21) in one continuous pass instead, still
 with the same rigor (real-DB verification, one commit per page/phase).
 
-**One open item flagged for the user, not silently fixed**: the accessibility pass (step 21, see
-below) found that form input borders (`--border`/`--border-strong` against `--surface2`, the actual
-adjacent background most inputs use) fail WCAG 1.4.11's 3:1 non-text-contrast minimum in **both**
-themes (dark: 1.14–1.42:1, light: 1.22–1.64:1). This is a global design-token issue, not a
-page-specific bug — didn't touch it, since `globals.css`'s color formula was explicitly imported
-from the user's design mockup and "don't hand-pick new colors outside that formula" is an existing
-rule (see "Key decisions" below). Worth asking the user whether they want `--border`/
-`--border-strong` bumped for contrast, and if so by how much, before touching the token formula.
+**Border-contrast gap (flagged in step 21) — now fixed.** The accessibility pass found `--border`/
+`--border-strong` failed WCAG 1.4.11's 3:1 non-text-contrast minimum against `--surface2` in both
+themes (dark: 1.14–1.42:1, light: 1.22–1.64:1). Asked the user how to scope the fix: bump the
+shared `--border` token globally (affects every border in the app — inputs, cards, dividers, table
+rows) vs. a new input-only token that leaves the rest of the UI untouched. User chose the global
+bump. Fix, in `app/globals.css`:
+- Recomputed real contrast ratios via the actual OKLCH→linear-sRGB→relative-luminance math (not
+  L%-eyeballing) to find the minimum-L threshold per theme, then added a safety margin above it
+  rather than shipping values that sit right at the 3:1 line.
+- Dark: `--border` 28%→55%L (3.44:1 vs `--surface2`), `--border-strong` 34%→62%L (4.59:1) — same
+  hue (155) and chroma (0.009/0.01) as before, only L changed, so this stays inside the existing
+  token formula rather than hand-picking new colors.
+- Light: `--border` 89%→60%L (3.46:1 vs `--surface2`), `--border-strong` 80%→50%L (5.25:1).
+- Also checked the new values against `--surface`/`--bg` (the other two backgrounds `--border`
+  appears on) to confirm they don't look wrong there: 3.7–4.1:1 in both themes, still comfortably
+  in range, not overshooting into a jarring high-contrast look.
+- **`--border-strong` turned out to be dead code** — defined in `globals.css` but grepped 0 usages
+  anywhere in `app/`/`components/`. Bumped it anyway to preserve the two-tier relationship (still
+  more contrasty than `--border`) in case a future session wires it up, but this pass didn't add
+  any new call sites for it.
+- Two bare `border` (no explicit color) usages exist (`ProjectsClient.tsx`/`DsaClient.tsx` status
+  buttons) — checked both: every branch of their ternary sets `borderColor` inline via `style`, so
+  they never fall through to the `* { border-color: hsl(var(--border-hsl)) }` global default.
+  `--border-hsl`/`--input` (the shadcn-mapped HSL tokens) were correctly left untouched.
+- Verified `npm run build` stays green after the token change; no visual/browser check possible in
+  this environment (same limitation as steps 19–21), so a real look at both themes is still worth a
+  quick glance next time there's browser access.
 
 **What's left is genuinely open-ended, not a checklist**: Tiptap rich text for Notes (step 13
 explicitly scoped it out), a real `/dsa/[id]` or `/interviews/[id]` deep-linkable route if ever
-wanted, swapping `DATABASE_URL` to a real cloud Postgres before any real deployment, and the
-border-contrast fix above if the user wants it. None of these are "step N still pending" — they're
-possible future asks, listed here so a future session doesn't mistake this for unfinished plan work.
+wanted, and swapping `DATABASE_URL` to a real cloud Postgres before any real deployment. None of
+these are "step N still pending" — they're possible future asks, listed here so a future session
+doesn't mistake this for unfinished plan work.
 
 ## Accessibility pass (step 21)
 

@@ -16,8 +16,8 @@
   --bg: oklch(15% 0.006 155);
   --surface: oklch(19% 0.007 155);
   --surface2: oklch(23.5% 0.008 155);
-  --border: oklch(28% 0.009 155);
-  --border-strong: oklch(34% 0.01 155);
+  --border: oklch(55% 0.009 155);
+  --border-strong: oklch(62% 0.01 155);
   --text: oklch(94% 0.004 155);
   --muted: oklch(64% 0.01 155);
 
@@ -68,8 +68,8 @@
   --bg: oklch(98% 0.004 155);
   --surface: oklch(99.5% 0.002 155);
   --surface2: oklch(95.5% 0.006 155);
-  --border: oklch(89% 0.007 155);
-  --border-strong: oklch(80% 0.01 155);
+  --border: oklch(60% 0.007 155);
+  --border-strong: oklch(50% 0.01 155);
   --text: oklch(21% 0.006 155);
   --muted: oklch(46% 0.012 155);
 
