@@ -264,30 +264,34 @@ export function DsaClient({ data }: { data: DsaData }) {
         )}
 
         <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-          <div className="grid grid-cols-[2.2fr_1.3fr_0.8fr_1fr_0.7fr_0.8fr_1fr] border-b border-[var(--border)] px-4 py-2.5 text-[11px] uppercase tracking-wide text-[var(--muted)]">
+          <div className="grid grid-cols-[2fr_0.8fr_1fr] border-b border-[var(--border)] px-4 py-2.5 text-[11px] uppercase tracking-wide text-[var(--muted)] sm:grid-cols-[2.2fr_1.3fr_0.8fr_1fr_0.7fr_0.8fr_1fr]">
             <div>Problem</div>
-            <div>Pattern</div>
+            <div className="hidden sm:block">Pattern</div>
             <div>Diff.</div>
             <div>Status</div>
-            <div>Att.</div>
-            <div>Time</div>
-            <div>Next review</div>
+            <div className="hidden sm:block">Att.</div>
+            <div className="hidden sm:block">Time</div>
+            <div className="hidden sm:block">Next review</div>
           </div>
           {filtered.map((p) => (
             <button
               key={p.id}
               onClick={() => setSelectedId(p.id)}
-              className="grid w-full grid-cols-[2.2fr_1.3fr_0.8fr_1fr_0.7fr_0.8fr_1fr] items-center border-b border-[var(--border)] px-4 py-[11px] text-left text-[13px] last:border-b-0 hover:bg-[var(--surface2)]"
+              className="grid w-full grid-cols-[2fr_0.8fr_1fr] items-center border-b border-[var(--border)] px-4 py-[11px] text-left text-[13px] last:border-b-0 hover:bg-[var(--surface2)] sm:grid-cols-[2.2fr_1.3fr_0.8fr_1fr_0.7fr_0.8fr_1fr]"
             >
               <div className="truncate pr-2 text-[var(--text)]">{p.title}</div>
-              <div className="truncate pr-2 text-xs text-[var(--muted)]">{PATTERN_LABEL[p.pattern]}</div>
+              <div className="hidden truncate pr-2 text-xs text-[var(--muted)] sm:block">
+                {PATTERN_LABEL[p.pattern]}
+              </div>
               <div style={{ color: difficultyColor(p.difficulty) }}>{difficultyLabel(p.difficulty)}</div>
               <div className="font-semibold" style={{ color: dsaStatusColor(p.status) }}>
                 {dsaStatusLabel(p.status)}
               </div>
-              <div className="font-mono text-[var(--muted)]">{p.attempts}</div>
-              <div className="font-mono text-[var(--muted)]">{p.timeSpent ? `${p.timeSpent}m` : "—"}</div>
-              <div className="font-mono text-[11.5px] text-[var(--muted)]">
+              <div className="hidden font-mono text-[var(--muted)] sm:block">{p.attempts}</div>
+              <div className="hidden font-mono text-[var(--muted)] sm:block">
+                {p.timeSpent ? `${p.timeSpent}m` : "—"}
+              </div>
+              <div className="hidden font-mono text-[11.5px] text-[var(--muted)] sm:block">
                 {reviewDateLabel(p.reviewInDays)}
               </div>
             </button>

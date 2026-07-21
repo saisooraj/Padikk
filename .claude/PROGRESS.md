@@ -52,7 +52,7 @@ This changed:
 | 17 | `/settings` | ✅ Visual shell done, static data |
 | 18 | Wire all API routes (`app/api/**`) | ✅ All 10 pages wired to real Prisma queries |
 | 19 | Loading states, error boundaries, empty states | ✅ Done — shared `loading.tsx`/`error.tsx`, empty states already done per-page |
-| 20 | Responsive mobile layout per page | 🟡 Shell + grids are responsive; not device-tested |
+| 20 | Responsive mobile layout per page | ✅ Audited all 10 pages; fixed 2 dense tables that didn't collapse |
 | 21 | Dark mode polish, accessibility pass | 🟡 Both themes render correctly; no accessibility pass yet |
 
 **Step 18 is done — all 10 pages are wired to real Prisma queries.** No more static/client-state
@@ -60,10 +60,44 @@ shells or illustrative placeholder catalogs feeding any page's primary data (see
 sources" below, which is now fully superseded — kept temporarily for the historical philosophy
 notes, safe to delete once steps 19–21 are done too).
 
-**Next up: steps 20–21** (mobile responsiveness, accessibility pass). This session moved off the
-earlier one-page-per-session-turn cadence — the user asked to work through everything remaining in
-this plan in one continuous pass instead, still with the same rigor (real-DB verification, one
-commit per page/phase).
+**Next up: step 21** (accessibility pass). This session moved off the earlier
+one-page-per-session-turn cadence — the user asked to work through everything remaining in this
+plan in one continuous pass instead, still with the same rigor (real-DB verification, one commit
+per page/phase).
+
+## Responsive mobile audit (step 20)
+
+**No browser/device access in this environment** (confirmed: no Playwright/Puppeteer installed,
+just curl) — this was a code-level audit (grep every `grid-cols`/fixed-width usage across all 10
+pages, read the shell components, reason about breakpoints) plus structural verification via curl
+that the right classes land in the rendered HTML at each breakpoint, not a visual/device check. Flag
+this to the user if they want a real visual pass on an actual phone.
+
+- **The app shell was already solid, no changes needed**: `Sidebar` is `hidden md:flex` (desktop
+  only), `TopBar` + `MobileNav` are `md:hidden` (mobile only, bottom tab bar with all 10 routes,
+  horizontally scrollable via `overflow-x-auto` if the viewport is too narrow for all 10 at once —
+  that's a contained scroll within the nav bar, not a page-level overflow bug), `PageShell`'s
+  `<main>` has `pb-24` on mobile specifically to clear the fixed bottom nav. Every top-level page
+  layout split (`grid-cols-1 lg:grid-cols-[...]`) was already mobile-first responsive across all 10
+  pages, going back to the very first design-pivot session — this wasn't new work, just confirmed by
+  grepping every `grid-cols` usage in `app/(app)/**`.
+- **Found and fixed two real gaps**: DSA's problem table (`grid-cols-[2.2fr_1.3fr_0.8fr_1fr_0.7fr_
+  0.8fr_1fr]`, 7 columns) and Interviews' table (`grid-cols-[0.9fr_1fr_1.3fr_1.2fr_0.8fr_0.8fr]`, 6
+  columns) had **no** responsive variant at all — same 6–7 columns always, which would render
+  unreadably cramped on a phone (each column a few px wide) even though nothing would technically
+  overflow (all `fr` units, not fixed px). Fixed both with a narrower mobile `grid-cols-[...]`
+  (DSA: Problem/Diff./Status — the 3 most load-bearing at a glance; Interviews: Date/Platform/Score)
+  plus `hidden sm:block` on the now-mobile-hidden header/cell `div`s for the remaining columns
+  (Pattern/Att./Time/Next review for DSA; Type/Company/Difficulty for Interviews), switching to the
+  full column set at `sm:` (640px) and up. `display:none` correctly removes a grid item from the
+  track flow, so the fewer visible cells auto-place into the narrower mobile template without empty
+  gaps — verified this renders correctly via curl (grepped the served HTML for the right count of
+  `hidden sm:block` cells per row).
+- Everything else checked and found already correct: Projects' Kanban (`grid-cols-1 sm:grid-cols-2
+  lg:grid-cols-4`), Stats' heatmap (`repeat(20,minmax(0,1fr))` — deliberately dense at every width,
+  same pattern as GitHub's contribution graph, not a bug), Dashboard's momentum row (`flex`+
+  `flex-1`, not a fixed grid, shrinks naturally), all filter/add-form rows across DSA/Notes/
+  Interviews (`flex flex-wrap`, wrap to new lines rather than overflow).
 
 ## Loading states & error boundaries (step 19)
 

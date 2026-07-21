@@ -257,12 +257,12 @@ export function InterviewsClient({ data }: { data: InterviewsData }) {
       )}
 
       <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-        <div className="grid grid-cols-[0.9fr_1fr_1.3fr_1.2fr_0.8fr_0.8fr] border-b border-[var(--border)] px-4 py-2.5 text-[11px] uppercase tracking-wide text-[var(--muted)]">
+        <div className="grid grid-cols-[0.9fr_1.2fr_0.8fr] border-b border-[var(--border)] px-4 py-2.5 text-[11px] uppercase tracking-wide text-[var(--muted)] sm:grid-cols-[0.9fr_1fr_1.3fr_1.2fr_0.8fr_0.8fr]">
           <div>Date</div>
           <div>Platform</div>
-          <div>Type</div>
-          <div>Company</div>
-          <div>Difficulty</div>
+          <div className="hidden sm:block">Type</div>
+          <div className="hidden sm:block">Company</div>
+          <div className="hidden sm:block">Difficulty</div>
           <div>Score</div>
         </div>
         {data.interviews.map((iv) => (
@@ -271,12 +271,14 @@ export function InterviewsClient({ data }: { data: InterviewsData }) {
             onClick={() => setSelectedId(iv.id)}
             className="w-full border-b border-[var(--border)] px-4 py-[13px] text-left last:border-b-0 hover:bg-[var(--surface2)]"
           >
-            <div className="grid grid-cols-[0.9fr_1fr_1.3fr_1.2fr_0.8fr_0.8fr] items-center text-[13px]">
+            <div className="grid grid-cols-[0.9fr_1.2fr_0.8fr] items-center text-[13px] sm:grid-cols-[0.9fr_1fr_1.3fr_1.2fr_0.8fr_0.8fr]">
               <div className="font-mono text-xs text-[var(--muted)]">{format(iv.date, "MMM d")}</div>
               <div className="text-[var(--text)]">{iv.platform}</div>
-              <div className="text-[var(--muted)]">{INTERVIEW_TYPE_LABEL[iv.type as InterviewType]}</div>
-              <div className="text-[var(--text)]">{iv.company ?? "—"}</div>
-              <div className="text-[var(--text)]">{iv.difficulty}/5</div>
+              <div className="hidden text-[var(--muted)] sm:block">
+                {INTERVIEW_TYPE_LABEL[iv.type as InterviewType]}
+              </div>
+              <div className="hidden text-[var(--text)] sm:block">{iv.company ?? "—"}</div>
+              <div className="hidden text-[var(--text)] sm:block">{iv.difficulty}/5</div>
               <div className="font-semibold" style={{ color: scoreColor(iv.performance) }}>
                 {iv.performance}/5
               </div>
