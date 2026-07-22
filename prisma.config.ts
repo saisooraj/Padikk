@@ -8,6 +8,8 @@ export default defineConfig({
     seed: "npx tsx prisma/seed.ts",
   },
   datasource: {
-    url: process.env.DATABASE_URL,
+    // Prisma Migrate needs a direct (non-pooled) connection; DATABASE_URL may be
+    // a transaction-pooler URL (e.g. Supabase) that doesn't support migrations.
+    url: process.env.DIRECT_URL ?? process.env.DATABASE_URL,
   },
 });

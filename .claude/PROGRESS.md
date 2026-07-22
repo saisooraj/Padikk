@@ -90,9 +90,57 @@ bump. Fix, in `app/globals.css`:
   this environment (same limitation as steps 19–21), so a real look at both themes is still worth a
   quick glance next time there's browser access.
 
-**What's left is genuinely open-ended, not a checklist**: swapping `DATABASE_URL` to a real cloud
-Postgres before any real deployment. Not "step N still pending" — a possible future ask, listed here
-so a future session doesn't mistake this for unfinished plan work.
+**Nothing is left open from the original flagged list anymore** — the last item (cloud Postgres) is
+done, see below.
+
+## Cloud Postgres migration to Supabase (post-plan follow-up)
+
+Both dev and any future deployment now point at a real Supabase Postgres project instead of local
+Postgres — the user chose to fully retire local Postgres rather than keep a dev/prod split, since
+Padikk is a single-user personal app (one database following the user, not throwaway dev data).
+
+- **Two connection strings, not one** — Supabase's direct-connection hostname
+  (`db.<ref>.supabase.co:5432`) only resolves to an **IPv6** address, and this machine has no IPv6
+  route (confirmed via `dig`/`nc`), so Prisma Migrate couldn't reach it (`P1001`). Fix: use
+  Supabase's **Session pooler** (`aws-0-<region>.pooler.supabase.com:5432`) for migrations instead —
+  same one-persistent-connection-per-session behavior as a real direct connection (so Migrate's
+  advisory locks work), but IPv4-reachable through Supabase's pooler infra. `DATABASE_URL` (app
+  runtime) uses the **Transaction pooler** (`:6543`) as normal.
+- `.env`/`.env.local` (both gitignored, confirmed via `git ls-files` before touching them — only
+  `.env.example` is tracked) now hold `DATABASE_URL` = transaction pooler, `DIRECT_URL` = session
+  pooler. `.env.example` documents both placeholders with a comment explaining when `DIRECT_URL` is
+  needed (pooled `DATABASE_URL`) vs. skippable (plain local Postgres where `DATABASE_URL` is already
+  direct).
+- `prisma.config.ts`'s `datasource.url` now reads `DIRECT_URL ?? DATABASE_URL` — this only affects
+  the Prisma CLI (`migrate`/`studio`/etc.); the actual running app (`lib/prisma.ts`'s
+  `PrismaPg` adapter) already read `DATABASE_URL` directly and was untouched, so app runtime and CLI
+  migrations correctly use different connections without any schema-level `directUrl` (checked:
+  this Prisma version's config `Datasource` type only supports `url`/`shadowDatabaseUrl`, no
+  `directUrl` field — the CLI/app split had to happen via which env var each file reads, not via a
+  single schema-level mechanism).
+- Ran `prisma migrate deploy` (applied both existing migrations cleanly to the fresh Supabase DB) and
+  `prisma db seed` (safe here — brand-new empty database, none of the "don't blow away real data"
+  caution from the local-DB seeding gotcha applied).
+- **Migrated 3 real rows from the old local Postgres** (not seed/test data — genuine prior usage:
+  1 `DailyLog`, 1 `TaskCompletion`, the real `UserSettings` row) rather than silently leaving them
+  behind — asked the user first since silently discarding real activity data would be the wrong
+  default. Matched rows by natural key (`Month.number`, `DailyTask` title+weekNumber+order) rather
+  than reusing the old cuid()s, since the new DB's seed run generated entirely different ids for the
+  same logical rows.
+- **Verified end-to-end**: confirmed both `.env` files were gitignored before writing real
+  credentials into them; confirmed the transaction-pooler `DATABASE_URL` works for the app's own
+  `pg`-adapter connection (queried real row counts through it, not just through the CLI); booted a
+  real dev server against the new env and signed in via a real credentials POST; confirmed
+  `/dashboard`, `/dsa`, `/roadmap` all 200 and render real seeded content (e.g. "IZBA Health Score
+  API" project, month/task titles); confirmed `/stats` and `/settings` reflect the migrated real data
+  (1h logged, 90-min daily goal, `Asia/Kolkata`) after the row migration, not just the fresh-seed
+  zero-state. `npm run build`/`tsc --noEmit` both clean.
+- **Left for the user, not done silently**: the old local Postgres (`padikk`/`padikk`@localhost)
+  still has the same rows and is untouched — retiring/dropping it is a destructive local action, left
+  for the user to do whenever they're ready. Also: **any already-running dev server process** (there
+  was one on port 3000 from before this session) has the old `DATABASE_URL` loaded in memory and
+  needs a restart to pick up the new Supabase connection — `.env` changes don't hot-reload into an
+  already-running Next process.
 
 ## Tiptap rich text for Notes (post-plan follow-up)
 
@@ -814,14 +862,20 @@ file bookkeeping below, which is still accurate:
 - Page title/subtitle in `PageShell`'s header bar come from a zustand store
   (`lib/store/page-header.ts`) via the `usePageHeader(title, subtitle)` hook — call it once at
   the top of each page component. This avoids prop-drilling through every route.
-- **No cloud database configured yet.** Local dev runs against a Docker Postgres container:
-  `padikk-postgres` (`docker start/stop padikk-postgres`), user/pass/db all `padikk`,
-  `postgresql://padikk:padikk@localhost:5432/padikk`. Before deploying, swap `DATABASE_URL` in
-  `.env` and `.env.local` to a real Supabase/Railway connection string and rerun
-  `npx prisma migrate deploy`.
-- **Env files**: `.env` (Prisma CLI reads this) and `.env.local` (Next.js runtime) both need
-  `DATABASE_URL`. `.env.example` documents the full var list. Neither `.env` nor `.env.local` is
-  committed (see `.gitignore`).
+- **Cloud database: Supabase, not local Postgres anymore** (see "Cloud Postgres migration to
+  Supabase" above for the full story). `DATABASE_URL` = Supabase's transaction pooler (`:6543`, what
+  the running app uses via `lib/prisma.ts`'s adapter); `DIRECT_URL` = Supabase's session pooler
+  (`:5432`, what `prisma.config.ts` uses for `migrate`/CLI commands only).
+  **Supabase's true direct-connection hostname (`db.<ref>.supabase.co:5432`) is IPv6-only** — don't
+  put that one in `DIRECT_URL` unless the environment has real IPv6 routing, use the session pooler
+  instead, which is IPv4-reachable and still supports Migrate's advisory locks (transaction pooler
+  does not). The old local Docker Postgres (`padikk-postgres`, `postgresql://padikk:padikk@localhost
+  :5432/padikk`) still exists with its original rows but is no longer used by the app.
+- **Env files**: `.env` (Prisma CLI reads this via `prisma.config.ts`) and `.env.local` (Next.js
+  runtime) both need `DATABASE_URL` **and** `DIRECT_URL`. `.env.example` documents the full var list
+  and when `DIRECT_URL` can be omitted (plain non-pooled local Postgres). Neither `.env` nor
+  `.env.local` is committed (see `.gitignore`) — confirmed before ever writing real credentials into
+  them, not assumed.
 - **Auth is not wired yet** — Sidebar/PageShell no longer take user-identity props at all (the
   redesigned Sidebar has no avatar/username row, matching the new mockup). Once NextAuth (step 6)
   lands, account info surfaces via the Settings page instead; revisit whether Sidebar needs an
