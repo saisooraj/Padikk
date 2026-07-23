@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 import { usePageHeader } from "@/lib/use-page-header";
 import { INTERVIEW_TYPE_LABEL, type InterviewType } from "@/lib/interviews-data";
@@ -81,6 +82,9 @@ export function InterviewsClient({ data, initialSelectedId }: { data: Interviews
   usePageHeader("Interviews", "Mock interview log");
   const router = useRouter();
 
+  const [interviews, setInterviews] = useState(data.interviews);
+  useEffect(() => setInterviews(data.interviews), [data.interviews]);
+
   const selectInterview = (id: string | null) =>
     router.push(id ? `/interviews/${id}` : "/interviews", { scroll: false });
 
@@ -93,7 +97,7 @@ export function InterviewsClient({ data, initialSelectedId }: { data: Interviews
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  const selected = initialSelectedId ? data.interviews.find((iv) => iv.id === initialSelectedId) ?? null : null;
+  const selected = initialSelectedId ? interviews.find((iv) => iv.id === initialSelectedId) ?? null : null;
 
   useEffect(() => {
     setEditForm(selected ? formFromRow(selected) : null);
@@ -127,8 +131,11 @@ export function InterviewsClient({ data, initialSelectedId }: { data: Interviews
         body: JSON.stringify(toPayload(addForm)),
       });
       if (res.ok) {
+        const body = await res.json();
+        setInterviews((prev) => [body.interview, ...prev]);
         setAddForm(emptyForm());
         setAddOpen(false);
+        toast.success("Interview logged.");
         router.refresh();
       } else {
         const body = await res.json().catch(() => ({}));
@@ -150,6 +157,9 @@ export function InterviewsClient({ data, initialSelectedId }: { data: Interviews
         body: JSON.stringify(toPayload(editForm)),
       });
       if (res.ok) {
+        const body = await res.json();
+        setInterviews((prev) => prev.map((iv) => (iv.id === selected.id ? body.interview : iv)));
+        toast.success("Changes saved.");
         router.refresh();
       } else {
         const body = await res.json().catch(() => ({}));
@@ -163,10 +173,17 @@ export function InterviewsClient({ data, initialSelectedId }: { data: Interviews
   const deleteInterview = async () => {
     if (!selected) return;
     if (!confirm("Delete this interview log? This can't be undone.")) return;
-    const res = await fetch(`/api/interviews/${selected.id}`, { method: "DELETE" });
-    if (res.ok) {
-      selectInterview(null);
+    const prevInterviews = interviews;
+    setInterviews((prev) => prev.filter((iv) => iv.id !== selected.id));
+    selectInterview(null);
+    try {
+      const res = await fetch(`/api/interviews/${selected.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      toast.success("Interview deleted.");
       router.refresh();
+    } catch {
+      setInterviews(prevInterviews);
+      toast.error("Could not delete interview. Please try again.");
     }
   };
 
@@ -277,7 +294,7 @@ export function InterviewsClient({ data, initialSelectedId }: { data: Interviews
           <div className="hidden sm:block">Difficulty</div>
           <div>Score</div>
         </div>
-        {data.interviews.map((iv) => (
+        {interviews.map((iv) => (
           <button
             key={iv.id}
             onClick={() => selectInterview(iv.id)}
@@ -298,7 +315,7 @@ export function InterviewsClient({ data, initialSelectedId }: { data: Interviews
             {iv.feedback && <div className="mt-2 text-xs text-[var(--muted)]">{iv.feedback}</div>}
           </button>
         ))}
-        {data.interviews.length === 0 && (
+        {interviews.length === 0 && (
           <div className="px-5 py-11 text-center">
             <div className="mb-2.5 text-[13.5px] text-[var(--muted)]">No mock interviews logged yet.</div>
             <button

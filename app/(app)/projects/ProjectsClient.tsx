@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 import { usePageHeader } from "@/lib/use-page-header";
 import { phaseColorVars, type PhaseColorKey } from "@/lib/curriculum-data";
@@ -12,9 +13,12 @@ import type { ProjectsData } from "@/lib/queries/projects";
 
 const STATUSES: ProjectStatus[] = ["NOT_STARTED", "IN_PROGRESS", "COMPLETED", "DEPLOYED"];
 
-export function ProjectsClient({ projects }: { projects: ProjectsData }) {
+export function ProjectsClient({ projects: initialProjects }: { projects: ProjectsData }) {
   usePageHeader("Projects", "12 capstones, one per month");
   const router = useRouter();
+
+  const [projects, setProjects] = useState(initialProjects);
+  useEffect(() => setProjects(initialProjects), [initialProjects]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
@@ -34,15 +38,21 @@ export function ProjectsClient({ projects }: { projects: ProjectsData }) {
     setNotesDraft(selected?.notes ?? "");
   }, [selected?.id, selected?.githubUrl, selected?.liveUrl, selected?.techStack, selected?.notes]);
 
-  const patch = async (id: string, body: Record<string, unknown>) => {
+  const setStatus = async (id: string, statusValue: ProjectStatus) => {
+    const prevProjects = projects;
+    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, status: statusValue } : p)));
     setPendingIds((prev) => new Set(prev).add(id));
     try {
       const res = await fetch(`/api/projects/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ status: statusValue }),
       });
-      if (res.ok) router.refresh();
+      if (!res.ok) throw new Error();
+      router.refresh();
+    } catch {
+      setProjects(prevProjects);
+      toast.error("Could not update status. Please try again.");
     } finally {
       setPendingIds((prev) => {
         const next = new Set(prev);
@@ -51,8 +61,6 @@ export function ProjectsClient({ projects }: { projects: ProjectsData }) {
       });
     }
   };
-
-  const setStatus = (id: string, status: ProjectStatus) => patch(id, { status });
 
   const isDirty =
     !!selected &&
@@ -65,15 +73,26 @@ export function ProjectsClient({ projects }: { projects: ProjectsData }) {
     if (!selected) return;
     setSaving(true);
     try {
-      await patch(selected.id, {
-        githubUrl: githubDraft,
-        liveUrl: liveDraft,
-        techStack: techDraft
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
-        notes: notesDraft,
+      const techStack = techDraft
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      const res = await fetch(`/api/projects/${selected.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ githubUrl: githubDraft, liveUrl: liveDraft, techStack, notes: notesDraft }),
       });
+      if (res.ok) {
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === selected.id ? { ...p, githubUrl: githubDraft, liveUrl: liveDraft, techStack, notes: notesDraft } : p
+          )
+        );
+        toast.success("Project details saved.");
+        router.refresh();
+      } else {
+        toast.error("Could not save details. Please try again.");
+      }
     } finally {
       setSaving(false);
     }

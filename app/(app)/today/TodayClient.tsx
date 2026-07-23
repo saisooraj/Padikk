@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { usePageHeader } from "@/lib/use-page-header";
 import { taskTypeColorVars, TASK_TYPE_LABEL, type TaskType } from "@/lib/curriculum-data";
@@ -23,6 +24,7 @@ export function TodayClient({ data }: { data: TodayData }) {
   usePageHeader("Today", `Week ${data.currentWeek} · Month ${data.monthNumber}`);
   const router = useRouter();
 
+  const [weekTasks, setWeekTasks] = useState(data.weekTasks);
   const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(new Set());
   const [activeTaskId, setActiveTaskId] = useState<string | null>(data.weekTasks[0]?.id ?? null);
   const [secondsLeft, setSecondsLeft] = useState(WORK_SECONDS);
@@ -35,20 +37,28 @@ export function TodayClient({ data }: { data: TodayData }) {
   const [logSaved, setLogSaved] = useState(false);
   const [logSaving, setLogSaving] = useState(false);
 
+  useEffect(() => setWeekTasks(data.weekTasks), [data.weekTasks]);
+
   useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
 
-  const activeTask = data.weekTasks.find((t) => t.id === activeTaskId) ?? null;
+  const activeTask = weekTasks.find((t) => t.id === activeTaskId) ?? null;
 
   const toggleTask = async (taskId: string) => {
     if (pendingTaskIds.has(taskId)) return;
+    const prevTasks = weekTasks;
+    setWeekTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, done: !t.done } : t)));
     setPendingTaskIds((prev) => new Set(prev).add(taskId));
     try {
       const res = await fetch(`/api/tasks/${taskId}/toggle`, { method: "POST" });
-      if (res.ok) router.refresh();
+      if (!res.ok) throw new Error();
+      router.refresh();
+    } catch {
+      setWeekTasks(prevTasks);
+      toast.error("Could not update task. Please try again.");
     } finally {
       setPendingTaskIds((prev) => {
         const next = new Set(prev);
@@ -94,7 +104,10 @@ export function TodayClient({ data }: { data: TodayData }) {
       });
       if (res.ok) {
         setLogSaved(true);
+        toast.success("Session logged.");
         router.refresh();
+      } else {
+        toast.error("Could not save log. Please try again.");
       }
     } finally {
       setLogSaving(false);
@@ -106,7 +119,7 @@ export function TodayClient({ data }: { data: TodayData }) {
       <Card className="p-5">
         <div className="mb-3.5 text-sm font-semibold text-[var(--text)]">This week&apos;s tasks</div>
         <div className="flex flex-col gap-2">
-          {data.weekTasks.map((task) => {
+          {weekTasks.map((task) => {
             const isActive = activeTaskId === task.id;
             const pending = pendingTaskIds.has(task.id);
             const typeVars = taskTypeColorVars(task.type as TaskType);
@@ -144,7 +157,7 @@ export function TodayClient({ data }: { data: TodayData }) {
               </div>
             );
           })}
-          {data.weekTasks.length === 0 && (
+          {weekTasks.length === 0 && (
             <div className="text-[12.5px] text-[var(--muted)]">No tasks scheduled for this week.</div>
           )}
         </div>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
 
 import { usePageHeader } from "@/lib/use-page-header";
 import { MONTHS } from "@/lib/curriculum-data";
@@ -14,6 +15,9 @@ import type { NotesData } from "@/lib/queries/notes";
 export function NotesClient({ data }: { data: NotesData }) {
   usePageHeader("Notes", "Journal & references");
   const router = useRouter();
+
+  const [notesList, setNotesList] = useState(data.notes);
+  useEffect(() => setNotesList(data.notes), [data.notes]);
 
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(data.notes[0]?.id ?? null);
@@ -32,7 +36,7 @@ export function NotesClient({ data }: { data: NotesData }) {
   const [monthRefDraft, setMonthRefDraft] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
-  const notes = [...data.notes].sort((a, b) => Number(b.pinned) - Number(a.pinned));
+  const notes = [...notesList].sort((a, b) => Number(b.pinned) - Number(a.pinned));
 
   const filtered = notes.filter(
     (n) =>
@@ -57,15 +61,21 @@ export function NotesClient({ data }: { data: NotesData }) {
       tagsDraft !== selected.tags.join(", ") ||
       monthRefDraft !== (selected.monthRef ? String(selected.monthRef) : ""));
 
-  const patch = async (id: string, body: Record<string, unknown>) => {
+  const togglePin = async (id: string, pinned: boolean) => {
+    const prevNotes = notesList;
+    setNotesList((prev) => prev.map((n) => (n.id === id ? { ...n, pinned: !pinned } : n)));
     setPendingIds((prev) => new Set(prev).add(id));
     try {
       const res = await fetch(`/api/notes/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ pinned: !pinned }),
       });
-      if (res.ok) router.refresh();
+      if (!res.ok) throw new Error();
+      router.refresh();
+    } catch {
+      setNotesList(prevNotes);
+      toast.error("Could not update pin. Please try again.");
     } finally {
       setPendingIds((prev) => {
         const next = new Set(prev);
@@ -75,27 +85,31 @@ export function NotesClient({ data }: { data: NotesData }) {
     }
   };
 
-  const togglePin = (id: string, pinned: boolean) => patch(id, { pinned: !pinned });
-
   const saveNote = async () => {
     if (!selected) return;
     if (!titleDraft.trim()) return;
     setSaving(true);
     try {
+      const tags = tagsDraft.split(",").map((t) => t.trim()).filter(Boolean);
+      const monthRef = monthRefDraft ? Number(monthRefDraft) : null;
       const res = await fetch(`/api/notes/${selected.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: titleDraft,
-          content: contentDraft,
-          tags: tagsDraft
-            .split(",")
-            .map((t) => t.trim())
-            .filter(Boolean),
-          monthRef: monthRefDraft ? Number(monthRefDraft) : null,
-        }),
+        body: JSON.stringify({ title: titleDraft, content: contentDraft, tags, monthRef }),
       });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        setNotesList((prev) =>
+          prev.map((n) =>
+            n.id === selected.id
+              ? { ...n, title: titleDraft, content: contentDraft, tags, monthRef, updatedAt: new Date() }
+              : n
+          )
+        );
+        toast.success("Note saved.");
+        router.refresh();
+      } else {
+        toast.error("Could not save note. Please try again.");
+      }
     } finally {
       setSaving(false);
     }
@@ -103,13 +117,18 @@ export function NotesClient({ data }: { data: NotesData }) {
 
   const deleteNote = async (id: string) => {
     if (!confirm("Delete this note? This can't be undone.")) return;
+    const prevNotes = notesList;
+    setNotesList((prev) => prev.filter((n) => n.id !== id));
+    setSelectedId(null);
     setPendingIds((prev) => new Set(prev).add(id));
     try {
       const res = await fetch(`/api/notes/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        setSelectedId(null);
-        router.refresh();
-      }
+      if (!res.ok) throw new Error();
+      toast.success("Note deleted.");
+      router.refresh();
+    } catch {
+      setNotesList(prevNotes);
+      toast.error("Could not delete note. Please try again.");
     } finally {
       setPendingIds((prev) => {
         const next = new Set(prev);
@@ -141,11 +160,13 @@ export function NotesClient({ data }: { data: NotesData }) {
       });
       if (res.ok) {
         const body = await res.json();
+        setNotesList((prev) => [body.note, ...prev]);
         setAddTitle("");
         setAddContent("");
         setAddTags("");
         setAddOpen(false);
         setSelectedId(body.note.id);
+        toast.success("Note added.");
         router.refresh();
       } else {
         const body = await res.json().catch(() => ({}));
@@ -239,12 +260,12 @@ export function NotesClient({ data }: { data: NotesData }) {
               </div>
             </button>
           ))}
-          {filtered.length === 0 && data.notes.length > 0 && (
+          {filtered.length === 0 && notesList.length > 0 && (
             <div className="px-2 py-8 text-center text-[12.5px] text-[var(--muted)]">
               No notes match &quot;{search}&quot;.
             </div>
           )}
-          {data.notes.length === 0 && (
+          {notesList.length === 0 && (
             <div className="px-2 py-8 text-center text-[12.5px] text-[var(--muted)]">
               No notes yet. Start with key concepts from today&apos;s session.
             </div>

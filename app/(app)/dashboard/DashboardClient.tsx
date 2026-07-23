@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 import { usePageHeader } from "@/lib/use-page-header";
 import {
@@ -24,6 +25,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   usePageHeader("Dashboard", "Your daily landing view");
   const router = useRouter();
 
+  const [weekTasks, setWeekTasks] = useState(data.weekTasks);
   const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(new Set());
   const [logTime, setLogTime] = useState("");
   const [logMoodIndex, setLogMoodIndex] = useState<number | null>(null);
@@ -31,15 +33,23 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   const [logSaved, setLogSaved] = useState(false);
   const [logSaving, setLogSaving] = useState(false);
 
+  useEffect(() => setWeekTasks(data.weekTasks), [data.weekTasks]);
+
   const phaseVars = phaseColorVars(data.phase.color as PhaseColorKey);
-  const doneCount = data.weekTasks.filter((t) => t.done).length;
+  const doneCount = weekTasks.filter((t) => t.done).length;
 
   const toggleTask = async (taskId: string) => {
     if (pendingTaskIds.has(taskId)) return;
+    const prevTasks = weekTasks;
+    setWeekTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, done: !t.done } : t)));
     setPendingTaskIds((prev) => new Set(prev).add(taskId));
     try {
       const res = await fetch(`/api/tasks/${taskId}/toggle`, { method: "POST" });
-      if (res.ok) router.refresh();
+      if (!res.ok) throw new Error();
+      router.refresh();
+    } catch {
+      setWeekTasks(prevTasks);
+      toast.error("Could not update task. Please try again.");
     } finally {
       setPendingTaskIds((prev) => {
         const next = new Set(prev);
@@ -60,7 +70,10 @@ export function DashboardClient({ data }: { data: DashboardData }) {
       });
       if (res.ok) {
         setLogSaved(true);
+        toast.success("Session logged.");
         router.refresh();
+      } else {
+        toast.error("Could not save log. Please try again.");
       }
     } finally {
       setLogSaving(false);
@@ -80,11 +93,11 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           <div className="mb-3.5 flex items-center justify-between">
             <div className="text-sm font-semibold text-[var(--text)]">This week</div>
             <div className="text-xs text-[var(--muted)]">
-              {doneCount}/{data.weekTasks.length} tasks done
+              {doneCount}/{weekTasks.length} tasks done
             </div>
           </div>
           <div className="flex flex-col gap-2">
-            {data.weekTasks.map((task) => {
+            {weekTasks.map((task) => {
               const typeVars = taskTypeColorVars(task.type as TaskType);
               const pending = pendingTaskIds.has(task.id);
               return (
@@ -114,7 +127,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 </button>
               );
             })}
-            {data.weekTasks.length === 0 && (
+            {weekTasks.length === 0 && (
               <div className="text-[12.5px] text-[var(--muted)]">No tasks scheduled for this week.</div>
             )}
           </div>

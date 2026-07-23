@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 import { usePageHeader } from "@/lib/use-page-header";
 import { Card } from "@/components/ui/card";
@@ -27,6 +28,9 @@ export function ReviewClient({ data }: { data: ReviewData }) {
   const [rating, setRating] = useState(data.existingReview?.rating ?? 4);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [reviews, setReviews] = useState(data.reviews);
+  useEffect(() => setReviews(data.reviews), [data.reviews]);
 
   useEffect(() => {
     setHours(defaultHours);
@@ -55,10 +59,24 @@ export function ReviewClient({ data }: { data: ReviewData }) {
         }),
       });
       if (res.ok) {
+        const body = await res.json();
+        const savedReview = {
+          ...body.review,
+          weekStart: new Date(body.review.weekStart),
+          weekEnd: new Date(body.review.weekEnd),
+        };
+        setReviews((prev) => {
+          const withoutExisting = prev.filter((r) => r.id !== savedReview.id);
+          return [savedReview, ...withoutExisting].sort(
+            (a, b) => b.weekStart.valueOf() - a.weekStart.valueOf()
+          );
+        });
+        toast.success("Review saved.");
         router.refresh();
       } else {
         const body = await res.json().catch(() => ({}));
         setError(body.error ?? "Could not save review.");
+        toast.error(body.error ?? "Could not save review.");
       }
     } finally {
       setSaving(false);
@@ -139,7 +157,7 @@ export function ReviewClient({ data }: { data: ReviewData }) {
 
       <div className="flex flex-col gap-2.5">
         <div className="text-sm font-semibold text-[var(--text)]">History</div>
-        {data.reviews.map((review) => (
+        {reviews.map((review) => (
           <Card key={review.id} className="p-4">
             <div className="mb-2 flex justify-between">
               <span className="text-[13px] font-semibold text-[var(--text)]">
@@ -155,7 +173,7 @@ export function ReviewClient({ data }: { data: ReviewData }) {
             <div className="text-[12.5px] text-[var(--muted)]">Next: {review.nextWeekFocus || "—"}</div>
           </Card>
         ))}
-        {data.reviews.length === 0 && (
+        {reviews.length === 0 && (
           <div className="text-[12.5px] text-[var(--muted)]">No reviews submitted yet.</div>
         )}
       </div>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { addDays, format } from "date-fns";
+import { toast } from "sonner";
 
 import { usePageHeader } from "@/lib/use-page-header";
 import { DSA_PATTERNS, PATTERN_LABEL, type DSAPattern } from "@/lib/dsa-data";
@@ -35,6 +36,11 @@ export function DsaClient({ data, initialSelectedId }: { data: DsaData; initialS
   const [difficulty, setDifficulty] = useState<Difficulty | "all">("all");
   const [status, setStatus] = useState<ProblemStatus | "all">("all");
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  const [dismissedReviewIds, setDismissedReviewIds] = useState<Set<string>>(new Set());
+
+  const [problems, setProblems] = useState(data.problems);
+  useEffect(() => setProblems(data.problems), [data.problems]);
+  useEffect(() => setDismissedReviewIds(new Set()), [data.dueForReview]);
 
   const selectProblem = (id: string | null) =>
     router.push(id ? `/dsa/${id}` : "/dsa", { scroll: false });
@@ -50,7 +56,7 @@ export function DsaClient({ data, initialSelectedId }: { data: DsaData; initialS
   const [notesDraft, setNotesDraft] = useState("");
   const [notesSaving, setNotesSaving] = useState(false);
 
-  const filtered = data.problems.filter(
+  const filtered = problems.filter(
     (p) =>
       (pattern === "all" || p.pattern === pattern) &&
       (difficulty === "all" || p.difficulty === difficulty) &&
@@ -58,43 +64,65 @@ export function DsaClient({ data, initialSelectedId }: { data: DsaData; initialS
       (!search || p.title.toLowerCase().includes(search.toLowerCase()))
   );
 
-  const selected = initialSelectedId ? data.problems.find((p) => p.id === initialSelectedId) ?? null : null;
+  const selected = initialSelectedId ? problems.find((p) => p.id === initialSelectedId) ?? null : null;
+
+  const dueForReview = data.dueForReview.filter((p) => !dismissedReviewIds.has(p.id));
 
   useEffect(() => {
     setNotesDraft(selected?.notes ?? "");
   }, [selected?.id, selected?.notes]);
 
-  const withPending = async (id: string, fn: () => Promise<Response>) => {
+  const setProblemStatus = async (id: string, next: ProblemStatus) => {
+    const prevProblems = problems;
+    setProblems((prev) => prev.map((p) => (p.id === id ? { ...p, status: next } : p)));
     setPendingIds((prev) => new Set(prev).add(id));
     try {
-      const res = await fn();
-      if (res.ok) router.refresh();
+      const res = await fetch(`/api/dsa/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "setStatus", status: next }),
+      });
+      if (!res.ok) throw new Error();
+      router.refresh();
+    } catch {
+      setProblems(prevProblems);
+      toast.error("Could not update status. Please try again.");
     } finally {
       setPendingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
+        const next2 = new Set(prev);
+        next2.delete(id);
+        return next2;
       });
     }
   };
 
-  const setProblemStatus = (id: string, next: ProblemStatus) =>
-    withPending(id, () =>
-      fetch(`/api/dsa/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "setStatus", status: next }),
-      })
-    );
-
-  const reviewDone = (id: string) =>
-    withPending(id, () =>
-      fetch(`/api/dsa/${id}`, {
+  const reviewDone = async (id: string) => {
+    setDismissedReviewIds((prev) => new Set(prev).add(id));
+    setPendingIds((prev) => new Set(prev).add(id));
+    try {
+      const res = await fetch(`/api/dsa/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "reviewDone" }),
-      })
-    );
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Review logged.");
+      router.refresh();
+    } catch {
+      setDismissedReviewIds((prev) => {
+        const next2 = new Set(prev);
+        next2.delete(id);
+        return next2;
+      });
+      toast.error("Could not log review. Please try again.");
+    } finally {
+      setPendingIds((prev) => {
+        const next2 = new Set(prev);
+        next2.delete(id);
+        return next2;
+      });
+    }
+  };
 
   const saveNotes = async (id: string) => {
     setNotesSaving(true);
@@ -104,7 +132,13 @@ export function DsaClient({ data, initialSelectedId }: { data: DsaData; initialS
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "updateFields", notes: notesDraft }),
       });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        setProblems((prev) => prev.map((p) => (p.id === id ? { ...p, notes: notesDraft } : p)));
+        toast.success("Notes saved.");
+        router.refresh();
+      } else {
+        toast.error("Could not save notes. Please try again.");
+      }
     } finally {
       setNotesSaving(false);
     }
@@ -112,8 +146,25 @@ export function DsaClient({ data, initialSelectedId }: { data: DsaData; initialS
 
   const deleteProblem = async (id: string) => {
     if (!confirm("Delete this problem? This can't be undone.")) return;
-    await withPending(id, () => fetch(`/api/dsa/${id}`, { method: "DELETE" }));
+    const prevProblems = problems;
+    setProblems((prev) => prev.filter((p) => p.id !== id));
     selectProblem(null);
+    setPendingIds((prev) => new Set(prev).add(id));
+    try {
+      const res = await fetch(`/api/dsa/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      toast.success("Problem deleted.");
+      router.refresh();
+    } catch {
+      setProblems(prevProblems);
+      toast.error("Could not delete problem. Please try again.");
+    } finally {
+      setPendingIds((prev) => {
+        const next2 = new Set(prev);
+        next2.delete(id);
+        return next2;
+      });
+    }
   };
 
   const addProblem = async () => {
@@ -135,9 +186,12 @@ export function DsaClient({ data, initialSelectedId }: { data: DsaData; initialS
         }),
       });
       if (res.ok) {
+        const body = await res.json();
+        setProblems((prev) => [{ ...body.problem, reviewInDays: null }, ...prev]);
         setAddTitle("");
         setAddUrl("");
         setAddOpen(false);
+        toast.success("Problem added.");
         router.refresh();
       } else {
         const body = await res.json().catch(() => ({}));
@@ -302,7 +356,7 @@ export function DsaClient({ data, initialSelectedId }: { data: DsaData; initialS
               </div>
             </button>
           ))}
-          {filtered.length === 0 && data.problems.length > 0 && (
+          {filtered.length === 0 && problems.length > 0 && (
             <div className="px-5 py-11 text-center">
               <div className="mb-2.5 text-[13.5px] text-[var(--muted)]">
                 No problems match these filters.
@@ -320,7 +374,7 @@ export function DsaClient({ data, initialSelectedId }: { data: DsaData; initialS
               </button>
             </div>
           )}
-          {data.problems.length === 0 && (
+          {problems.length === 0 && (
             <div className="px-5 py-11 text-center">
               <div className="mb-2.5 text-[13.5px] text-[var(--muted)]">
                 No problems tracked yet. Add your first one to start building the pattern list.
@@ -442,10 +496,10 @@ export function DsaClient({ data, initialSelectedId }: { data: DsaData; initialS
 
         <Card className="p-5">
           <div className="mb-3 text-sm font-semibold text-[var(--text)]">Due for review</div>
-          {data.dueForReview.length === 0 ? (
+          {dueForReview.length === 0 ? (
             <div className="text-[12.5px] text-[var(--muted)]">Nothing due today.</div>
           ) : (
-            data.dueForReview.map((p) => (
+            dueForReview.map((p) => (
               <div
                 key={p.id}
                 className="flex items-center justify-between border-b border-[var(--border)] py-2 text-[12.5px] last:border-b-0"

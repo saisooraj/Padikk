@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { useSession, signOut } from "next-auth/react";
+import { toast } from "sonner";
 
 import { usePageHeader } from "@/lib/use-page-header";
 import { Card } from "@/components/ui/card";
@@ -35,7 +36,9 @@ export function SettingsClient({ data }: { data: SettingsData }) {
   const router = useRouter();
   const { data: session } = useSession();
 
-  const initial = formFromSettings(data.settings);
+  const [initial, setInitial] = useState(() => formFromSettings(data.settings));
+  useEffect(() => setInitial(formFromSettings(data.settings)), [data.settings]);
+
   const [form, setForm] = useState<FormState>(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,10 +63,13 @@ export function SettingsClient({ data }: { data: SettingsData }) {
         }),
       });
       if (res.ok) {
+        setInitial(form);
+        toast.success("Settings saved.");
         router.refresh();
       } else {
         const body = await res.json().catch(() => ({}));
         setError(body.error ?? "Could not save settings.");
+        toast.error(body.error ?? "Could not save settings.");
       }
     } finally {
       setSaving(false);

@@ -4,6 +4,7 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import Providers from "./providers";
 import { ThemeSync } from "@/components/theme-sync";
+import { Toaster } from "@/components/toaster";
 import { THEME_STORAGE_KEY } from "@/lib/store/theme";
 
 const inter = Inter({
@@ -46,6 +47,7 @@ export default function RootLayout({
       </head>
       <body className="font-sans antialiased">
         <ThemeSync />
+        <Toaster />
         <Providers>{children}</Providers>
       </body>
     </html>
