@@ -35,6 +35,7 @@ export async function getTodayData(userId: string) {
   const weekTasks = (tasksByWeek.get(currentWeek) ?? []).map((t) => ({
     id: t.id,
     title: t.title,
+    description: t.description,
     duration: t.duration,
     type: t.type,
     done: t.completions.length > 0,

@@ -166,9 +166,15 @@ export function TodayClient({ data }: { data: TodayData }) {
       <div className="flex flex-col gap-5">
         <Card className="p-6 text-center">
           <div className="mb-1 text-xs text-[var(--muted)]">Focused on</div>
-          <div className="mb-[18px] text-sm font-semibold text-[var(--text)]">
+          <div className="text-sm font-semibold text-[var(--text)]">
             {activeTask?.title ?? "No task selected"}
           </div>
+          {activeTask?.description && (
+            <div className="mx-auto mb-[18px] mt-2 max-w-[42ch] text-left text-[12.5px] leading-relaxed text-[var(--muted)]">
+              {activeTask.description}
+            </div>
+          )}
+          {!activeTask?.description && <div className="mb-[18px]" />}
           <div className="mb-[18px] font-mono text-[44px] font-bold tracking-wide text-[var(--text)]">
             {formatTime(secondsLeft)}
           </div>
